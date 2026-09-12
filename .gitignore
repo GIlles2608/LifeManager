@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual env
+.venv/
+venv/
+env/
+
+# Environment — NEVER commit
+.env
+
+# IDE
+.vscode/settings.json
+.idea/
+*.swp
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Local build output / workspace artifacts
+out/
+%SystemDrive%/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Alembic — keep versions, ignore pycache
+migrations/__pycache__/
+migrations/versions/__pycache__/

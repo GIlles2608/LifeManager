@@ -1,0 +1,99 @@
+@startuml LifeManager — Use case diagram
+' ──────────────────────────────────────────────────────────────────────────
+' Scope: current state — Finance module only.
+' Single actor (solo desktop app, no multi-user in v1).
+' Cases marked <<planned>> are out of scope today but already named in
+' CLAUDE.md / Current state. They appear in light gray for reference only.
+' ──────────────────────────────────────────────────────────────────────────
+
+left to right direction
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam usecase {
+  BackgroundColor #fdfdfd
+  BorderColor #444
+  BackgroundColor<<planned>> #eeeeee
+  BorderColor<<planned>> #999999
+  FontColor<<planned>> #666666
+}
+
+actor "Utilisateur" as User
+
+rectangle "LifeManager (v1 — desktop solo)" {
+
+  package "Finance — disponible aujourd'hui" {
+    usecase "Consulter les transactions\ndu mois" as UC_View
+    usecase "Changer de mois" as UC_PickMonth
+    usecase "Voir les 5 KPIs\n(Revenus / Dépenses / Épargne /\nDettes / Net)" as UC_KPIs
+    usecase "Ajouter une transaction" as UC_Add
+    usecase "Supprimer une transaction" as UC_Delete
+    usecase "Voir une alerte\nde dépassement de budget" as UC_BudgetAlert
+  }
+
+  package "Lookups (utilisés par les dialogues)" {
+    usecase "Choisir un compte" as UC_PickAccount
+    usecase "Choisir une catégorie\n(optionnel)" as UC_PickCategory
+    usecase "Cibler une dette\n(si flow=DETTE)" as UC_PickDebt
+    usecase "Cibler un objectif d'épargne\n(si flow=EPARGNE)" as UC_PickGoal
+  }
+
+  package "Finance — planifié" {
+    usecase "Modifier une transaction" <<planned>> as UC_Edit
+    usecase "Saisir un budget mensuel\n(plafond par catégorie)" <<planned>> as UC_BudgetEdit
+    usecase "Gérer les dettes\n(CRUD)" <<planned>> as UC_DebtCRUD
+    usecase "Gérer les objectifs d'épargne\n(CRUD)" <<planned>> as UC_GoalCRUD
+    usecase "Voir le solde courant\nd'un compte" <<planned>> as UC_AccountBalance
+  }
+
+  package "Autres modules — planifiés" {
+    usecase "Suivre les courses\n(Grocery)" <<planned>> as UC_Grocery
+    usecase "Suivre la nutrition\n(Open Food Facts)" <<planned>> as UC_Nutrition
+    usecase "Tableau de bord agrégé" <<planned>> as UC_Dashboard
+  }
+}
+
+' ── Actor → primary use cases ─────────────────────────────────────────────
+User --> UC_View
+User --> UC_PickMonth
+User --> UC_KPIs
+User --> UC_Add
+User --> UC_Delete
+User --> UC_BudgetAlert
+
+User --> UC_Edit
+User --> UC_BudgetEdit
+User --> UC_DebtCRUD
+User --> UC_GoalCRUD
+User --> UC_AccountBalance
+
+User --> UC_Grocery
+User --> UC_Nutrition
+User --> UC_Dashboard
+
+' ── Includes / extends ────────────────────────────────────────────────────
+UC_View ..> UC_KPIs : <<include>>
+
+UC_Add ..> UC_PickAccount  : <<include>>
+UC_Add ..> UC_PickCategory : <<include>>
+UC_Add ..> UC_PickDebt     : <<extend>>\n(if DETTE)
+UC_Add ..> UC_PickGoal     : <<extend>>\n(if EPARGNE)
+
+UC_Add ..> UC_BudgetAlert  : <<extend>>\n(if budget exceeded\nand flow=DEPENSE)
+
+UC_Delete ..> UC_View : <<include>>\n(must select row)
+
+note bottom of UC_BudgetAlert
+  Triggered automatically after a DEPENSE
+  transaction whose category has a budget
+  whose ceiling is now exceeded.
+  Surfaced via QMessageBox in current UI;
+  full Alert persistence is planned.
+end note
+
+note bottom of UC_Edit
+  Will likely reuse AddTransactionDialog
+  pre-filled, then call a new
+  FinanceService.update_transaction(dto).
+end note
+
+@enduml

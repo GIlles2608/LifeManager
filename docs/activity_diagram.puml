@@ -1,0 +1,186 @@
+@startuml LifeManager — Activity diagrams
+' ──────────────────────────────────────────────────────────────────────────
+' Three activity flows of the current finance feature:
+'   1. Create a transaction (with budget check)
+'   2. Delete a transaction
+'   3. Browse transactions / refresh on month change
+' ──────────────────────────────────────────────────────────────────────────
+
+skinparam shadowing false
+skinparam ActivityBackgroundColor #f8f9fa
+skinparam ActivityBorderColor #444
+skinparam ArrowColor #444
+
+' ═══════════════════════════════════════════════════════════════════════════
+' 1) CREATE TRANSACTION
+' ═══════════════════════════════════════════════════════════════════════════
+
+|User|
+start
+:Click "+ Nouvelle…";
+
+|TransactionsView|
+:Open AddTransactionDialog;
+
+|AddTransactionDialog|
+:Populate combos via
+controller.list_accounts/
+list_categories/
+list_active_debts/
+list_active_goals;
+:User fills form;
+:User clicks "Ajouter";
+
+if (UI fields filled?\n(label, account, debt/goal if needed)) then (no)
+  :Show "Champ requis"
+  warning;
+  stop
+else (yes)
+  :Build TransactionDTO;
+  :Return Accepted;
+endif
+
+|TransactionsView|
+:controller.create_transaction(dto);
+
+|FinanceController|
+:Open get_session();
+:service = FinanceService(session);
+
+|FinanceService|
+:_validate_transaction(dto);
+
+if (Validation OK?) then (no — ValidationError)
+  |FinanceController|
+  :catch LifeManagerError;
+  :emit error(message);
+
+  |TransactionsView|
+  :_on_error → QMessageBox.warning;
+  stop
+else (yes)
+  |FinanceService|
+  :tx_repo.add(Transaction);
+
+  if (flow_type == DEPENSE\nand category_id?) then (yes)
+    :check_budget(category_id, month);
+    if (is_exceeded?) then (yes)
+      :bus.emit(BUDGET_EXCEEDED);
+    else (no)
+    endif
+  else (no)
+  endif
+
+  :bus.emit(TRANSACTION_CREATED);
+
+  |FinanceController|
+  :session.commit() (auto on with-exit);
+  :emit transaction_created(tx);
+
+  |TransactionsView|
+  :_on_transaction_created → _refresh();
+  :Reload KPIs + transactions;
+  stop
+endif
+
+' ═══════════════════════════════════════════════════════════════════════════
+' 2) DELETE TRANSACTION
+' ═══════════════════════════════════════════════════════════════════════════
+
+newpage Activity — Delete Transaction
+
+|User|
+start
+:Select a row in the table;
+
+|TransactionsView|
+:_on_selection_changed →
+delete_button.setEnabled(True);
+
+|User|
+:Click "Supprimer la transaction…";
+
+|TransactionsView|
+:QMessageBox.question(Yes/No);
+
+if (User confirms?) then (no)
+  stop
+else (yes)
+  :controller.delete_transaction(tx.id);
+
+  |FinanceController|
+  :Open get_session();
+  :service = FinanceService(session);
+
+  |FinanceService|
+  :tx_repo.delete(tx.id);
+
+  if (Found in DB?) then (no — NotFoundError)
+    |FinanceController|
+    :catch LifeManagerError;
+    :emit error(message);
+
+    |TransactionsView|
+    :QMessageBox.warning;
+    stop
+  else (yes)
+    |FinanceService|
+    :bus.emit(TRANSACTION_DELETED);
+
+    |FinanceController|
+    :session.commit();
+    :emit transaction_deleted(tx_id);
+
+    |TransactionsView|
+    :_on_transaction_deleted → _refresh();
+    :Reload KPIs + transactions;
+    stop
+  endif
+endif
+
+' ═══════════════════════════════════════════════════════════════════════════
+' 3) BROWSE / CHANGE MONTH
+' ═══════════════════════════════════════════════════════════════════════════
+
+newpage Activity — Browse / Change Month
+
+|User|
+start
+:Open the application
+or pick a month in the combo;
+
+|TransactionsView|
+:_refresh();
+:Read selected month from combo;
+
+|FinanceController|
+:get_monthly_kpis(month);
+
+|FinanceService|
+:tx_repo.total_by_flow(REVENU, m);
+:tx_repo.total_by_flow(DEPENSE, m);
+:tx_repo.total_by_flow(EPARGNE, m);
+:tx_repo.total_by_flow(DETTE, m);
+:Build MonthlyKPIs;
+
+|FinanceController|
+:emit kpis_refreshed(kpis);
+
+|TransactionsView|
+:_on_kpis_refreshed →
+update 5 KpiTiles
+(value + tone);
+
+|FinanceController|
+:list_transactions(month);
+
+|FinanceService|
+:tx_repo.list_by_month_with_relations(m)
+(joinedload account + category);
+
+|TransactionsView|
+:model.set_transactions(rows);
+:delete_button.setEnabled(False);
+stop
+
+@enduml

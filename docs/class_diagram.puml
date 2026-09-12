@@ -1,0 +1,363 @@
+@startuml LifeManager — Class diagram (Finance module)
+' ──────────────────────────────────────────────────────────────────────────
+' Scope: current state of the code (Finance module + core scaffolding).
+' Grocery and Nutrition are stubs only — not represented.
+' Private methods and SQL columns omitted for readability; only the API
+' relevant to understand the architecture is shown.
+' ──────────────────────────────────────────────────────────────────────────
+
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam linetype ortho
+skinparam packageStyle rectangle
+hide circle
+
+' ═══════════════════════════════════════════════════════════════════════════
+' CORE LAYER
+' ═══════════════════════════════════════════════════════════════════════════
+
+package "core" {
+
+  abstract class BaseModel {
+    + id : UUID
+    + created_at : datetime
+    + updated_at : datetime
+  }
+
+  class "BaseRepository<T>" as BaseRepository {
+    # session : Session
+    + add(entity: T) : T
+    + delete(entity_id: UUID)
+    + get_by_id(entity_id: UUID) : T
+    + find_by_id(entity_id: UUID) : T?
+    + list_all() : list<T>
+  }
+
+  class EventBus {
+    + on(event: str, handler)
+    + off(event: str, handler)
+    + emit(event: str, *args, **kwargs)
+  }
+
+  class Events <<constants>> {
+    + TRANSACTION_CREATED
+    + TRANSACTION_DELETED
+    + BUDGET_EXCEEDED
+    + DEBT_UPDATED
+    + GOAL_UPDATED
+    + APP_READY
+    + SETTINGS_CHANGED
+  }
+
+  class LifeManagerError <<exception>>
+  class NotFoundError <<exception>>
+  class ValidationError <<exception>>
+  class BudgetExceededError <<exception>>
+
+  LifeManagerError <|-- NotFoundError
+  LifeManagerError <|-- ValidationError
+  LifeManagerError <|-- BudgetExceededError
+}
+
+' ═══════════════════════════════════════════════════════════════════════════
+' FINANCE — MODELS
+' ═══════════════════════════════════════════════════════════════════════════
+
+package "finance.models" {
+
+  enum FlowType {
+    REVENU
+    DEPENSE
+    TRANSFERT
+    DETTE
+    EPARGNE
+  }
+
+  enum SenseType {
+    ENTREE
+    SORTIE
+  }
+
+  class Account {
+    + name : str
+    + type : AccountType
+    + initial_balance : Decimal
+    + is_active : bool
+  }
+
+  class Category {
+    + name : str
+    + grand_type : GrandType
+    + nature : NatureType
+    + is_active : bool
+    + parent_id : UUID?
+  }
+
+  class Transaction {
+    + date : date
+    + amount : Decimal
+    + flow_type : FlowType
+    + sense : SenseType
+    + label : str
+    --
+    + signed_amount : Decimal <<derived>>
+    + month : str <<derived (YYYY-MM)>>
+  }
+
+  class Budget {
+    + month : str (YYYY-MM)
+    + ceiling : Decimal
+  }
+
+  class Debt {
+    + name : str
+    + initial_amount : Decimal
+    + current_balance : Decimal
+    + monthly_target : Decimal
+    + status : DebtStatus
+    --
+    + repaid : Decimal <<derived>>
+    + progress : float <<derived>>
+  }
+
+  class SavingsGoal {
+    + name : str
+    + target_amount : Decimal
+    + current_amount : Decimal
+    + monthly_target : Decimal
+    + target_date : date
+    + status : GoalStatus
+    --
+    + remaining : Decimal <<derived>>
+    + progress : float <<derived>>
+  }
+
+  class Alert {
+    + alert_type : str
+    + message : str
+    + is_read : bool
+  }
+
+  ' Inheritance from BaseModel
+  BaseModel <|-- Account
+  BaseModel <|-- Category
+  BaseModel <|-- Transaction
+  BaseModel <|-- Budget
+  BaseModel <|-- Debt
+  BaseModel <|-- SavingsGoal
+  BaseModel <|-- Alert
+
+  ' Domain relationships
+  Transaction "many" --> "1" Account : account
+  Transaction "many" --> "0..1" Category : category
+  Transaction "many" --> "0..1" Debt : debt
+  Transaction "many" --> "0..1" SavingsGoal : goal
+  Budget       "many" --> "1" Category : category
+  Category     "0..1" --> "0..1" Category : parent
+  Alert        "many" --> "0..1" Budget : budget
+}
+
+' ═══════════════════════════════════════════════════════════════════════════
+' FINANCE — REPOSITORIES
+' ═══════════════════════════════════════════════════════════════════════════
+
+package "finance.repositories" {
+
+  class TransactionRepository {
+    + list_by_month(month) : list<Transaction>
+    + list_by_month_with_relations(month) : list<Transaction>
+    + list_by_account(account_id) : list<Transaction>
+    + total_in(month) : Decimal
+    + total_out(month) : Decimal
+    + total_by_flow(flow_type, month) : Decimal
+    + total_spent_by_category(category_id, month) : Decimal
+    + cashflow(month) : Decimal
+  }
+
+  class AccountRepository {
+    + list_active() : list<Account>
+    + get_balance(account_id) : Decimal
+  }
+
+  class CategoryRepository {
+    + list_active() : list<Category>
+    + list_by_grand_type(grand_type) : list<Category>
+    + list_children(parent_id) : list<Category>
+    + list_roots() : list<Category>
+  }
+
+  class BudgetRepository {
+    + get_by_category_and_month(category_id, month) : Budget?
+    + list_by_month(month) : list<Budget>
+  }
+
+  class DebtRepository {
+    + list_active() : list<Debt>
+  }
+
+  class SavingsGoalRepository {
+    + list_active() : list<SavingsGoal>
+  }
+
+  BaseRepository <|-- TransactionRepository
+  BaseRepository <|-- AccountRepository
+  BaseRepository <|-- CategoryRepository
+  BaseRepository <|-- BudgetRepository
+  BaseRepository <|-- DebtRepository
+  BaseRepository <|-- SavingsGoalRepository
+}
+
+' ═══════════════════════════════════════════════════════════════════════════
+' FINANCE — SERVICE LAYER
+' ═══════════════════════════════════════════════════════════════════════════
+
+package "finance.services" {
+
+  class "TransactionDTO <<frozen>>" as TransactionDTO {
+    + date : date
+    + amount : Decimal
+    + flow_type : FlowType
+    + sense : SenseType
+    + label : str
+    + account_id : UUID
+    + category_id : UUID?
+    + debt_id : UUID?
+    + goal_id : UUID?
+  }
+
+  class "MonthlyKPIs <<frozen>>" as MonthlyKPIs {
+    + month : str
+    + revenues : Decimal
+    + expenses : Decimal
+    + savings : Decimal
+    + debt_repayments : Decimal
+    + net : Decimal
+  }
+
+  class "BudgetCheckResult <<frozen>>" as BudgetCheckResult {
+    + category_name : str
+    + ceiling : Decimal
+    + spent : Decimal
+    + remaining : Decimal
+    + is_exceeded : bool
+  }
+
+  class FinanceService {
+    + create_transaction(dto: TransactionDTO) : Transaction
+    + delete_transaction(transaction_id: UUID)
+    + list_transactions(month) : list<Transaction>
+    + check_budget(category_id, month) : BudgetCheckResult
+    + get_monthly_kpis(month) : MonthlyKPIs
+    + update_debt_balance(debt_id, new_balance)
+    --
+    + list_accounts() : list<Account>
+    + list_categories() : list<Category>
+    + list_active_debts() : list<Debt>
+    + list_active_goals() : list<SavingsGoal>
+  }
+
+  FinanceService o--> TransactionRepository
+  FinanceService o--> AccountRepository
+  FinanceService o--> CategoryRepository
+  FinanceService o--> BudgetRepository
+  FinanceService o--> DebtRepository
+  FinanceService o--> SavingsGoalRepository
+}
+
+' ═══════════════════════════════════════════════════════════════════════════
+' FINANCE — CONTROLLER
+' ═══════════════════════════════════════════════════════════════════════════
+
+package "finance.controllers" {
+
+  class FinanceController <<QObject>> {
+    .. Outbound Qt signals ..
+    + transaction_created
+    + transaction_deleted
+    + kpis_refreshed
+    + budget_checked
+    + debt_updated
+    + error
+    .. Public methods (sync) ..
+    + create_transaction(dto) : Transaction?
+    + delete_transaction(id) : bool
+    + list_transactions(month) : list<Transaction>?
+    + get_monthly_kpis(month) : MonthlyKPIs?
+    + check_budget(category_id, month) : BudgetCheckResult?
+    + update_debt_balance(debt_id, new_balance) : bool
+    + list_accounts() : list<Account>
+    + list_categories() : list<Category>
+    + list_active_debts() : list<Debt>
+    + list_active_goals() : list<SavingsGoal>
+  }
+
+  FinanceController ..> FinanceService : creates per call
+}
+
+' ═══════════════════════════════════════════════════════════════════════════
+' FINANCE — VIEWS
+' ═══════════════════════════════════════════════════════════════════════════
+
+package "finance.views" {
+
+  class TransactionsView <<QWidget>> {
+    - month_combo : QComboBox
+    - kpi_tiles : dict<str, KpiTile>
+    - table : QTableView
+    - model : TransactionTableModel
+    - add_button : QPushButton
+    - delete_button : QPushButton
+  }
+
+  class TransactionTableModel <<QAbstractTableModel>> {
+    + set_transactions(rows)
+    + transaction_at(row) : Transaction?
+  }
+
+  class AddTransactionDialog <<QDialog>> {
+    + dto() : TransactionDTO?
+  }
+
+  class KpiTile <<QFrame>> {
+    + set_value(text)
+    + set_tone(tone)
+  }
+
+  TransactionsView *-- TransactionTableModel
+  TransactionsView ..> AddTransactionDialog : opens
+  TransactionsView *-- KpiTile : contains 5
+  TransactionsView ..> FinanceController : uses
+  AddTransactionDialog ..> FinanceController : uses
+}
+
+' ═══════════════════════════════════════════════════════════════════════════
+' CROSS-CUTTING
+' ═══════════════════════════════════════════════════════════════════════════
+
+FinanceService ..> EventBus : emits
+FinanceService ..> Events : uses constants
+FinanceService ..> ValidationError : raises
+FinanceService ..> NotFoundError : raises
+
+note bottom of FinanceService
+  Pure-Python business logic.
+  Never imports Qt or SQLAlchemy
+  directly — only repositories.
+end note
+
+note bottom of FinanceController
+  Pattern B Unit-of-Work:
+  one fresh session per public call
+  via core.config.database.get_session().
+  Domain errors → error signal + None.
+  Bugs → propagate.
+end note
+
+note bottom of TransactionsView
+  Reads via direct return (list_transactions)
+  for synchronous UI rendering.
+  Receives async refresh triggers via signals
+  (transaction_created / deleted, kpis_refreshed).
+end note
+
+@enduml
