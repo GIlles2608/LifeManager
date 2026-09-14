@@ -119,3 +119,5 @@ sur les modules suivants :
   en début de migration : plus de fichiers et d'indirections
   (port + adaptateur là où un accès direct suffisait), à surveiller
   pour ne pas dépasser ce que la taille réelle du projet justifie.
+
+## Status
