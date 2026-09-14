@@ -1,4 +1,5 @@
 """Alembic migration environment — reads settings and imports all models."""
+
 from __future__ import annotations
 
 from logging.config import fileConfig
@@ -6,20 +7,22 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from lifemanager.core.config.settings import settings
-from lifemanager.core.models.base import Base
-
 # Import model packages so Base.metadata knows about every model.
 # Each package's __init__.py re-exports its models, which is enough to register them.
 import lifemanager.finance.models  # noqa: F401
+from lifemanager.core.config.settings import settings
+from lifemanager.core.models.base import Base
+
 # Add new model package imports here as modules grow:
 # import lifemanager.grocery.models      # noqa: F401
 # import lifemanager.nutrition.models    # noqa: F401
 
 config = context.config
 
-# Override sqlalchemy.url from settings (reads .env)
-config.set_main_option("sqlalchemy.url", settings.db.url)
+# Override sqlalchemy.url from settings (reads .env), unless a caller already
+# injected one via `config.attributes` (e.g. tests/conftest.py pointing at a
+# testcontainers-managed database).
+config.set_main_option("sqlalchemy.url", config.attributes.get("sqlalchemy.url", settings.db.url))
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
