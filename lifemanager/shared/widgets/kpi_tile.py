@@ -1,14 +1,15 @@
 """KpiTile — small labeled value tile for KPI bands."""
+
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QFrame, QLabel, QVBoxLayout
+from PyQt6.QtWidgets import QFrame, QLabel, QVBoxLayout, QWidget
 
 
 class KpiTile(QFrame):
     """A title + value box. Use set_value() to update; set_tone() to color it."""
 
-    def __init__(self, title: str, parent=None) -> None:
+    def __init__(self, title: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setFrameShape(QFrame.Shape.StyledPanel)
         self.setMinimumWidth(140)
@@ -32,9 +33,9 @@ class KpiTile(QFrame):
     def set_tone(self, tone: str) -> None:
         """tone in {'neutral', 'positive', 'negative'}."""
         colors = {
-            "neutral":  "#ffffff",
-            "positive": "#4ade80",   # green-400 — readable on dark bg
-            "negative": "#f87171",   # red-400 — readable on dark bg
+            "neutral": "#ffffff",
+            "positive": "#4ade80",  # green-400 — readable on dark bg
+            "negative": "#f87171",  # red-400 — readable on dark bg
         }
         color = colors.get(tone, "#ffffff")
         self._value.setStyleSheet(f"font-size: 18px; font-weight: 700; color: {color};")

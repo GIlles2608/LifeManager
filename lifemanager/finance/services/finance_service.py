@@ -4,6 +4,7 @@ FinanceService — business logic for finance operations.
 Orchestrates repositories, enforces domain rules, emits events.
 Never touches SQLAlchemy directly: all DB access flows through repositories.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -11,10 +12,16 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy.orm import Session
-
 from lifemanager.core.events.bus import Events, bus
 from lifemanager.core.exceptions.exceptions import NotFoundError, ValidationError
+from lifemanager.finance.domain.ports import (
+    AccountRepositoryPort,
+    BudgetRepositoryPort,
+    CategoryRepositoryPort,
+    DebtRepositoryPort,
+    SavingsGoalRepositoryPort,
+    TransactionRepositoryPort,
+)
 from lifemanager.finance.models import (
     Account,
     Category,
@@ -24,21 +31,14 @@ from lifemanager.finance.models import (
     SenseType,
     Transaction,
 )
-from lifemanager.finance.repositories import (
-    AccountRepository,
-    BudgetRepository,
-    CategoryRepository,
-    DebtRepository,
-    SavingsGoalRepository,
-    TransactionRepository,
-)
-
 
 # ── DTOs ──────────────────────────────────────────────────────────────────────
+
 
 @dataclass(frozen=True)
 class TransactionDTO:
     """Validated input from controller to service. Frozen — value object."""
+
     date: date
     amount: Decimal
     flow_type: FlowType
@@ -62,6 +62,7 @@ class BudgetCheckResult:
 @dataclass(frozen=True)
 class MonthlyKPIs:
     """5 headline KPIs for a month. Savings goals are tracked separately."""
+
     month: str
     revenues: Decimal
     expenses: Decimal
@@ -72,20 +73,28 @@ class MonthlyKPIs:
 
 # ── Service ───────────────────────────────────────────────────────────────────
 
+
 class FinanceService:
     """
-    All finance business logic lives here. Instantiated per request with a
-    session injected; the service owns its repos but never the session itself
-    (commit/rollback is the caller's responsibility, via get_session()).
+    All finance business logic lives here. The service depends on repository
+    ports injected by the caller; it does not import or know about SQLAlchemy.
     """
 
-    def __init__(self, session: Session) -> None:
-        self._tx_repo = TransactionRepository(session)
-        self._budget_repo = BudgetRepository(session)
-        self._category_repo = CategoryRepository(session)
-        self._debt_repo = DebtRepository(session)
-        self._account_repo = AccountRepository(session)
-        self._goal_repo = SavingsGoalRepository(session)
+    def __init__(
+        self,
+        tx_repo: TransactionRepositoryPort,
+        budget_repo: BudgetRepositoryPort,
+        category_repo: CategoryRepositoryPort,
+        debt_repo: DebtRepositoryPort,
+        account_repo: AccountRepositoryPort,
+        goal_repo: SavingsGoalRepositoryPort,
+    ) -> None:
+        self._tx_repo = tx_repo
+        self._budget_repo = budget_repo
+        self._category_repo = category_repo
+        self._debt_repo = debt_repo
+        self._account_repo = account_repo
+        self._goal_repo = goal_repo
 
     # ── Transactions ──────────────────────────────────────────────────────────
 
@@ -115,6 +124,7 @@ class FinanceService:
         return tx
 
     def delete_transaction(self, transaction_id: uuid.UUID) -> None:
+        """Delete a transaction by id and emit a TRANSACTION_DELETED event."""
         self._tx_repo.delete(transaction_id)
         bus.emit(Events.TRANSACTION_DELETED, transaction_id)
 
@@ -125,15 +135,19 @@ class FinanceService:
     # ── Lookups (used by UI to populate selectors) ────────────────────────────
 
     def list_accounts(self) -> list[Account]:
+        """Return all active accounts."""
         return self._account_repo.list_active()
 
     def list_categories(self) -> list[Category]:
+        """Return all active categories."""
         return self._category_repo.list_active()
 
     def list_active_debts(self) -> list[Debt]:
+        """Return all active debts."""
         return self._debt_repo.list_active()
 
     def list_active_goals(self) -> list[SavingsGoal]:
+        """Return all active savings goals."""
         return self._goal_repo.list_active()
 
     # ── Budget ────────────────────────────────────────────────────────────────
@@ -146,7 +160,7 @@ class FinanceService:
         budget = self._budget_repo.get_by_category_and_month(category_id, month)
         category = self._category_repo.find_by_id(category_id)
 
-        ceiling = budget.ceiling if budget is not None else Decimal("0")
+        ceiling = budget.ceiling if budget is not None else Decimal(0)
         spent = self._tx_repo.total_spent_by_category(category_id, month)
         remaining = ceiling - spent
 
@@ -154,7 +168,7 @@ class FinanceService:
             category_name=category.name if category is not None else "Inconnu",
             ceiling=ceiling,
             spent=spent,
-            remaining=max(remaining, Decimal("0")),
+            remaining=max(remaining, Decimal(0)),
             is_exceeded=ceiling > 0 and spent > ceiling,
         )
 
@@ -185,15 +199,15 @@ class FinanceService:
 
     # ── Debt ──────────────────────────────────────────────────────────────────
 
-    def update_debt_balance(
-        self, debt_id: uuid.UUID, new_balance: Decimal
-    ) -> None:
+    def update_debt_balance(self, debt_id: uuid.UUID, new_balance: Decimal) -> None:
+        """Update a debt's current balance and emit a DEBT_UPDATED event."""
         if new_balance < 0:
             raise ValidationError("Debt balance cannot be negative.")
         debt = self._debt_repo.find_by_id(debt_id)
         if debt is None:
             raise NotFoundError("Debt", debt_id)
         debt.current_balance = new_balance
+        self._debt_repo.add(debt)
         bus.emit(Events.DEBT_UPDATED, debt)
 
     # ── Private ───────────────────────────────────────────────────────────────

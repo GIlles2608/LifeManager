@@ -5,12 +5,13 @@ Read-only at this stage (set in TransactionsView via NoEditTriggers).
 Use set_transactions() to replace the underlying data; the view is reset
 via beginResetModel/endResetModel.
 """
+
 from __future__ import annotations
 
 from decimal import Decimal
 from typing import Any
 
-from PyQt6.QtCore import QAbstractTableModel, QModelIndex, Qt
+from PyQt6.QtCore import QAbstractTableModel, QModelIndex, QObject, Qt
 
 from lifemanager.core.utils.formatting import format_amount, format_short_date
 from lifemanager.finance.models import SenseType, Transaction
@@ -20,7 +21,7 @@ class TransactionTableModel(QAbstractTableModel):
     HEADERS = ("Date", "Libellé", "Catégorie", "Compte", "Montant")
     COL_DATE, COL_LABEL, COL_CATEGORY, COL_ACCOUNT, COL_AMOUNT = range(5)
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._rows: list[Transaction] = []
 
@@ -78,6 +79,7 @@ class TransactionTableModel(QAbstractTableModel):
 
         if role == Qt.ItemDataRole.ForegroundRole and col == self.COL_AMOUNT:
             from PyQt6.QtGui import QColor
+
             if tx.sense == SenseType.ENTREE.value:
                 return QColor("#1b7a3e")
             return QColor("#b3261e")

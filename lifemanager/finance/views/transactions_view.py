@@ -10,12 +10,14 @@ Layout (top to bottom):
 
 Step 2: read-only data flow wired in.
 """
+
 from __future__ import annotations
 
+import uuid
 from datetime import date
 from decimal import Decimal
+from typing import cast
 
-from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
@@ -30,6 +32,7 @@ from PyQt6.QtWidgets import (
 
 from lifemanager.core.utils.formatting import format_amount
 from lifemanager.finance.controllers import FinanceController
+from lifemanager.finance.models import Transaction
 from lifemanager.finance.services.finance_service import MonthlyKPIs
 from lifemanager.finance.views.add_transaction_dialog import AddTransactionDialog
 from lifemanager.finance.views.transaction_table_model import TransactionTableModel
@@ -38,9 +41,9 @@ from lifemanager.shared.widgets.kpi_tile import KpiTile
 
 class TransactionsView(QWidget):
     KPI_LABELS = ("Revenus", "Dépenses", "Épargne", "Dettes", "Net")
-    MONTHS_HISTORY = 12   # months shown in the selector before the current one
+    MONTHS_HISTORY = 12  # months shown in the selector before the current one
 
-    def __init__(self, controller: FinanceController, parent=None) -> None:
+    def __init__(self, controller: FinanceController, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._controller = controller
         self._build_ui()
@@ -99,12 +102,15 @@ class TransactionsView(QWidget):
         self.table.setSelectionMode(QTableView.SelectionMode.SingleSelection)
         self.table.setEditTriggers(QTableView.EditTrigger.NoEditTriggers)
         self.table.setAlternatingRowColors(True)
-        self.table.verticalHeader().setVisible(False)
+        vertical_header = self.table.verticalHeader()
+        assert vertical_header is not None
+        vertical_header.setVisible(False)
 
         self.model = TransactionTableModel(self.table)
         self.table.setModel(self.model)
 
         header = self.table.horizontalHeader()
+        assert header is not None
         header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(
             TransactionTableModel.COL_DATE, QHeaderView.ResizeMode.ResizeToContents
@@ -129,7 +135,9 @@ class TransactionsView(QWidget):
         self.month_combo.currentIndexChanged.connect(self._on_month_changed)
         self.add_button.clicked.connect(self._on_add_clicked)
         self.delete_button.clicked.connect(self._on_delete_clicked)
-        self.table.selectionModel().selectionChanged.connect(self._on_selection_changed)
+        selection_model = self.table.selectionModel()
+        assert selection_model is not None
+        selection_model.selectionChanged.connect(self._on_selection_changed)
         self._controller.kpis_refreshed.connect(self._on_kpis_refreshed)
         self._controller.transaction_created.connect(self._on_transaction_created)
         self._controller.transaction_deleted.connect(self._on_transaction_deleted)
@@ -157,7 +165,7 @@ class TransactionsView(QWidget):
     # ── Refresh logic ─────────────────────────────────────────────────────────
 
     def _selected_month(self) -> str:
-        return self.month_combo.currentData()
+        return cast(str, self.month_combo.currentData())
 
     def _refresh(self) -> None:
         month = self._selected_month()
@@ -176,6 +184,12 @@ class TransactionsView(QWidget):
     def _on_month_changed(self, _index: int) -> None:
         self._refresh()
 
+    def _on_transaction_created(self, _tx: Transaction) -> None:
+        self._refresh()
+
+    def _on_transaction_deleted(self, _tx_id: uuid.UUID) -> None:
+        self._refresh()
+
     def _on_add_clicked(self) -> None:
         dialog = AddTransactionDialog(self._controller, self)
         if dialog.exec() != AddTransactionDialog.DialogCode.Accepted:
@@ -186,13 +200,7 @@ class TransactionsView(QWidget):
         self._controller.create_transaction(dto)
         # Success/failure handled via transaction_created / error signals.
 
-    def _on_transaction_created(self, _tx) -> None:
-        self._refresh()
-
-    def _on_transaction_deleted(self, _tx_id) -> None:
-        self._refresh()
-
-    def _on_selection_changed(self, *_args) -> None:
+    def _on_selection_changed(self, *_args: object) -> None:
         self.delete_button.setEnabled(self._selected_transaction() is not None)
 
     def _on_delete_clicked(self) -> None:
@@ -212,8 +220,10 @@ class TransactionsView(QWidget):
         self._controller.delete_transaction(tx.id)
         # Success/failure handled via transaction_deleted / error signals.
 
-    def _selected_transaction(self):
-        indexes = self.table.selectionModel().selectedRows()
+    def _selected_transaction(self) -> Transaction | None:
+        selection_model = self.table.selectionModel()
+        assert selection_model is not None
+        indexes = selection_model.selectedRows()
         if not indexes:
             return None
         return self.model.transaction_at(indexes[0].row())

@@ -1,9 +1,12 @@
 """Unit tests for FinanceService — no DB required (mocked session)."""
+
 from __future__ import annotations
 
 import uuid
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -18,7 +21,6 @@ from lifemanager.finance.services.finance_service import (
     TransactionDTO,
 )
 
-
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
 
@@ -29,23 +31,32 @@ def mock_session():
 
 @pytest.fixture
 def service(mock_session):
-    svc = FinanceService(mock_session)
-    # Replace each repo with a MagicMock so we can drive return values precisely.
-    svc._tx_repo = MagicMock()
-    svc._budget_repo = MagicMock()
-    svc._category_repo = MagicMock()
-    svc._debt_repo = MagicMock()
+    tx = MagicMock()
+    budget = MagicMock()
+    category = MagicMock()
+    debt = MagicMock()
+    account = MagicMock()
+    goal = MagicMock()
+    svc = FinanceService(
+        tx_repo=tx,
+        budget_repo=budget,
+        category_repo=category,
+        debt_repo=debt,
+        account_repo=account,
+        goal_repo=goal,
+    )
     return svc
 
 
 @pytest.fixture
 def captured_events():
     """Capture every event emitted on the global bus during a test."""
-    captured: list[tuple[str, tuple, dict]] = []
+    captured: list[tuple[str, tuple[Any, ...], dict[str, Any]]] = []
 
     def make_listener(event_name: str):
         def listener(*args, **kwargs):
             captured.append((event_name, args, kwargs))
+
         return listener
 
     listeners = {}
@@ -65,8 +76,8 @@ def captured_events():
         bus.off(event, h)
 
 
-def _valid_dto(**overrides) -> TransactionDTO:
-    base = dict(
+def _valid_dto(**overrides: Any) -> TransactionDTO:
+    base = TransactionDTO(
         date=date(2026, 5, 1),
         amount=Decimal("50.00"),
         flow_type=FlowType.DEPENSE,
@@ -75,8 +86,7 @@ def _valid_dto(**overrides) -> TransactionDTO:
         account_id=uuid.uuid4(),
         category_id=uuid.uuid4(),
     )
-    base.update(overrides)
-    return TransactionDTO(**base)
+    return replace(base, **overrides)
 
 
 # ── Validation ────────────────────────────────────────────────────────────────
@@ -85,11 +95,11 @@ def _valid_dto(**overrides) -> TransactionDTO:
 class TestTransactionValidation:
     def test_negative_amount_raises(self, service):
         with pytest.raises(ValidationError, match="positive"):
-            service._validate_transaction(_valid_dto(amount=Decimal("-10")))
+            service._validate_transaction(_valid_dto(amount=Decimal(-10)))
 
     def test_zero_amount_raises(self, service):
         with pytest.raises(ValidationError, match="positive"):
-            service._validate_transaction(_valid_dto(amount=Decimal("0")))
+            service._validate_transaction(_valid_dto(amount=Decimal(0)))
 
     def test_blank_label_raises(self, service):
         with pytest.raises(ValidationError, match="label"):
@@ -153,12 +163,12 @@ class TestCreateTransaction:
     def test_emits_budget_exceeded_when_over_ceiling(self, service, captured_events):
         service._tx_repo.add.side_effect = lambda tx: tx
         # Budget exists, ceiling=100, spent=150 => exceeded
-        budget = MagicMock(ceiling=Decimal("100"))
+        budget = MagicMock(ceiling=Decimal(100))
         category = MagicMock(name="cat-mock")
         category.name = "Alimentation"
         service._budget_repo.get_by_category_and_month.return_value = budget
         service._category_repo.find_by_id.return_value = category
-        service._tx_repo.total_spent_by_category.return_value = Decimal("150")
+        service._tx_repo.total_spent_by_category.return_value = Decimal(150)
 
         service.create_transaction(_valid_dto())
 
@@ -211,42 +221,42 @@ class TestCheckBudget:
         category = MagicMock()
         category.name = "Loisirs"
         service._category_repo.find_by_id.return_value = category
-        service._tx_repo.total_spent_by_category.return_value = Decimal("999")
+        service._tx_repo.total_spent_by_category.return_value = Decimal(999)
 
         result = service.check_budget(uuid.uuid4(), "2026-05")
 
-        assert result.ceiling == Decimal("0")
-        assert result.spent == Decimal("999")
+        assert result.ceiling == Decimal(0)
+        assert result.spent == Decimal(999)
         assert result.is_exceeded is False  # no ceiling defined
-        assert result.remaining == Decimal("0")
+        assert result.remaining == Decimal(0)
 
     def test_within_budget(self, service):
         service._budget_repo.get_by_category_and_month.return_value = MagicMock(
-            ceiling=Decimal("200")
+            ceiling=Decimal(200)
         )
         cat = MagicMock()
         cat.name = "Alim"
         service._category_repo.find_by_id.return_value = cat
-        service._tx_repo.total_spent_by_category.return_value = Decimal("80")
+        service._tx_repo.total_spent_by_category.return_value = Decimal(80)
 
         result = service.check_budget(uuid.uuid4(), "2026-05")
 
         assert result.is_exceeded is False
-        assert result.remaining == Decimal("120")
+        assert result.remaining == Decimal(120)
 
     def test_exceeded(self, service):
         service._budget_repo.get_by_category_and_month.return_value = MagicMock(
-            ceiling=Decimal("200")
+            ceiling=Decimal(200)
         )
         cat = MagicMock()
         cat.name = "Alim"
         service._category_repo.find_by_id.return_value = cat
-        service._tx_repo.total_spent_by_category.return_value = Decimal("250")
+        service._tx_repo.total_spent_by_category.return_value = Decimal(250)
 
         result = service.check_budget(uuid.uuid4(), "2026-05")
 
         assert result.is_exceeded is True
-        assert result.remaining == Decimal("0")  # clamped to 0
+        assert result.remaining == Decimal(0)  # clamped to 0
 
 
 # ── get_monthly_kpis ──────────────────────────────────────────────────────────
@@ -254,7 +264,7 @@ class TestCheckBudget:
 
 class TestMonthlyKPIs:
     def test_returns_typed_dataclass(self, service):
-        service._tx_repo.total_by_flow.return_value = Decimal("0")
+        service._tx_repo.total_by_flow.return_value = Decimal(0)
         kpis = service.get_monthly_kpis("2026-05")
         assert isinstance(kpis, MonthlyKPIs)
         assert kpis.month == "2026-05"
@@ -262,20 +272,20 @@ class TestMonthlyKPIs:
     def test_net_calculation(self, service):
         # Revenues 1200, Expenses 600, Savings 80, Debts 100 => Net = 420
         returns = {
-            FlowType.REVENU:  Decimal("1200"),
-            FlowType.DEPENSE: Decimal("600"),
-            FlowType.EPARGNE: Decimal("80"),
-            FlowType.DETTE:   Decimal("100"),
+            FlowType.REVENU: Decimal(1200),
+            FlowType.DEPENSE: Decimal(600),
+            FlowType.EPARGNE: Decimal(80),
+            FlowType.DETTE: Decimal(100),
         }
         service._tx_repo.total_by_flow.side_effect = lambda ft, m: returns[ft]
 
         kpis = service.get_monthly_kpis("2026-05")
 
-        assert kpis.revenues == Decimal("1200")
-        assert kpis.expenses == Decimal("600")
-        assert kpis.savings == Decimal("80")
-        assert kpis.debt_repayments == Decimal("100")
-        assert kpis.net == Decimal("420")
+        assert kpis.revenues == Decimal(1200)
+        assert kpis.expenses == Decimal(600)
+        assert kpis.savings == Decimal(80)
+        assert kpis.debt_repayments == Decimal(100)
+        assert kpis.net == Decimal(420)
 
 
 # ── update_debt_balance ───────────────────────────────────────────────────────
@@ -286,16 +296,16 @@ class TestUpdateDebtBalance:
         debt = MagicMock()
         service._debt_repo.find_by_id.return_value = debt
 
-        service.update_debt_balance(uuid.uuid4(), Decimal("500"))
+        service.update_debt_balance(uuid.uuid4(), Decimal(500))
 
-        assert debt.current_balance == Decimal("500")
+        assert debt.current_balance == Decimal(500)
         assert Events.DEBT_UPDATED in [e[0] for e in captured_events]
 
     def test_unknown_debt_raises(self, service):
         service._debt_repo.find_by_id.return_value = None
         with pytest.raises(NotFoundError):
-            service.update_debt_balance(uuid.uuid4(), Decimal("500"))
+            service.update_debt_balance(uuid.uuid4(), Decimal(500))
 
     def test_negative_balance_raises(self, service):
         with pytest.raises(ValidationError, match="negative"):
-            service.update_debt_balance(uuid.uuid4(), Decimal("-1"))
+            service.update_debt_balance(uuid.uuid4(), Decimal(-1))

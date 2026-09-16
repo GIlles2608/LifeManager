@@ -51,7 +51,7 @@ def controller(qtbot, mock_service):
         "lifemanager.finance.controllers.finance_controller.get_session",
         fake_get_session,
     ), patch(
-        "lifemanager.finance.controllers.finance_controller.FinanceService",
+        "lifemanager.finance.bootstrap.build_finance_service",
         return_value=mock_service,
     ):
         ctl = FinanceController()

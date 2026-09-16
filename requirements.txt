@@ -1,0 +1,27 @@
+# requirements.txt — runtime dependencies for LifeManager
+# Install with: pip install -r requirements.txt
+
+# UI
+PyQt6>=6.5,<7.0
+
+# ORM / DB
+SQLAlchemy>=2.0,<3.0
+psycopg2-binary>=2.9
+alembic>=1.10
+
+# Environment & HTTP
+python-dotenv>=1.0
+requests>=2.31
+
+# Testcontainers for integration tests (Postgres)
+testcontainers[postgres]>=4.1
+
+# Test tools (you may prefer to move these to requirements-dev.txt)
+pytest>=7.2
+pytest-qt>=4.1
+
+# Linting / typing / tooling
+ruff>=0.20
+mypy>=1.9
+
+# Pin exact versions in CI or create a lock file for reproducible builds
