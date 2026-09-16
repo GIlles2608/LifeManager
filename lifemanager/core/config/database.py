@@ -8,12 +8,14 @@ Usage:
         session.add(obj)
         session.commit()
 """
+
 from __future__ import annotations
 
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Generator
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from lifemanager.core.config.settings import settings
@@ -21,8 +23,8 @@ from lifemanager.core.config.settings import settings
 # ── Engine ────────────────────────────────────────────────────────────────────
 _engine = create_engine(
     settings.db.url,
-    echo=settings.app.is_dev,       # SQL logging in dev mode
-    pool_pre_ping=True,             # verify connection health before use
+    echo=settings.app.is_dev,  # SQL logging in dev mode
+    pool_pre_ping=True,  # verify connection health before use
     pool_size=5,
     max_overflow=10,
 )
@@ -32,7 +34,7 @@ _SessionLocal = sessionmaker(
     bind=_engine,
     autocommit=False,
     autoflush=False,
-    expire_on_commit=False,         # avoid lazy-load issues after commit
+    expire_on_commit=False,  # avoid lazy-load issues after commit
 )
 
 
@@ -50,6 +52,6 @@ def get_session() -> Generator[Session, None, None]:
         session.close()
 
 
-def get_engine():
+def get_engine() -> Engine:
     """Expose engine for Alembic migrations."""
     return _engine

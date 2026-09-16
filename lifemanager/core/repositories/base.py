@@ -3,6 +3,7 @@ Generic base repository — provides CRUD primitives shared by every repo.
 
 Subclasses set the ``model`` class attribute and add domain-specific queries.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -51,4 +52,4 @@ class BaseRepository(Generic[T]):
 
     def list_all(self) -> list[T]:
         stmt = select(self.model)
-        return list(self._session.scalars(stmt))  # type: ignore[arg-type]
+        return list(self._session.scalars(stmt))

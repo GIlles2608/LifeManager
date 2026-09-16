@@ -9,10 +9,13 @@ Responsibilities:
 Inter-module notifications (e.g. Dashboard refresh on TRANSACTION_CREATED) keep
 flowing through the global event bus, emitted by the service layer.
 """
+
 from __future__ import annotations
 
 import uuid
-from typing import Callable, TypeVar
+from collections.abc import Callable
+from decimal import Decimal
+from typing import TypeVar
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
@@ -33,17 +36,18 @@ class FinanceController(QObject):
     """Sync entry points for views; signals for outbound notifications."""
 
     # ── Outbound signals (views connect to these) ─────────────────────────────
-    transaction_created = pyqtSignal(object)   # Transaction
-    transaction_deleted = pyqtSignal(object)   # uuid.UUID
-    kpis_refreshed      = pyqtSignal(object)   # MonthlyKPIs
-    budget_checked      = pyqtSignal(object)   # BudgetCheckResult
-    debt_updated        = pyqtSignal()         # no payload — view re-fetches
-    error               = pyqtSignal(str)      # human-readable message
+    transaction_created = pyqtSignal(object)  # Transaction
+    transaction_deleted = pyqtSignal(object)  # uuid.UUID
+    kpis_refreshed = pyqtSignal(object)  # MonthlyKPIs
+    budget_checked = pyqtSignal(object)  # BudgetCheckResult
+    debt_updated = pyqtSignal()  # no payload — view re-fetches
+    error = pyqtSignal(str)  # human-readable message
 
     # ── Public API ────────────────────────────────────────────────────────────
 
     def create_transaction(self, dto: TransactionDTO) -> Transaction | None:
         """Create a transaction. Returns None on validation/persistence error."""
+
         def op(svc: FinanceService) -> Transaction:
             return svc.create_transaction(dto)
 
@@ -54,6 +58,7 @@ class FinanceController(QObject):
 
     def delete_transaction(self, transaction_id: uuid.UUID) -> bool:
         """Returns True on success, False on error."""
+
         def op(svc: FinanceService) -> uuid.UUID:
             svc.delete_transaction(transaction_id)
             return transaction_id
@@ -75,6 +80,7 @@ class FinanceController(QObject):
 
     def list_transactions(self, month: str) -> list[Transaction] | None:
         """Returns transactions for the month, or None on error."""
+
         def op(svc: FinanceService) -> list[Transaction]:
             return svc.list_transactions(month)
 
@@ -94,9 +100,7 @@ class FinanceController(QObject):
     def list_active_goals(self) -> list[SavingsGoal]:
         return self._run(lambda svc: svc.list_active_goals()) or []
 
-    def check_budget(
-        self, category_id: uuid.UUID, month: str
-    ) -> BudgetCheckResult | None:
+    def check_budget(self, category_id: uuid.UUID, month: str) -> BudgetCheckResult | None:
         def op(svc: FinanceService) -> BudgetCheckResult:
             return svc.check_budget(category_id, month)
 
@@ -105,9 +109,7 @@ class FinanceController(QObject):
             self.budget_checked.emit(result)
         return result
 
-    def update_debt_balance(
-        self, debt_id: uuid.UUID, new_balance
-    ) -> bool:
+    def update_debt_balance(self, debt_id: uuid.UUID, new_balance: Decimal) -> bool:
         def op(svc: FinanceService) -> bool:
             svc.update_debt_balance(debt_id, new_balance)
             return True
@@ -133,7 +135,10 @@ class FinanceController(QObject):
         """
         try:
             with get_session() as session:
-                return op(FinanceService(session))
+                from lifemanager.finance.bootstrap import build_finance_service
+
+                svc = build_finance_service(session)
+                return op(svc)
         except LifeManagerError as e:
             self.error.emit(str(e))
             return None

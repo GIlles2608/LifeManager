@@ -68,6 +68,8 @@ base de données réelle.
   4. Deuxième vague : `CategoryRepository`, `DebtRepository`,
      `SavingsGoalRepository`.
 
+
+
 ## Alternatives
 
 - **Maintenir l'approche actuelle** (base `lifemanager_test` créée et

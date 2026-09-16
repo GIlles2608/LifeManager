@@ -11,9 +11,11 @@ UI-side validation is intentionally minimal: only "required field is filled".
 Business rules (amount > 0, blank label, etc.) are enforced by FinanceService
 and surfaced via the controller's `error` signal.
 """
+
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import cast
 
 from PyQt6.QtCore import QDate, Qt
 from PyQt6.QtWidgets import (
@@ -107,12 +109,15 @@ class AddTransactionDialog(QDialog):
         self.buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
-        self.buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Ajouter")
-        self.buttons.button(QDialogButtonBox.StandardButton.Cancel).setText("Annuler")
+        ok_button = self.buttons.button(QDialogButtonBox.StandardButton.Ok)
+        cancel_button = self.buttons.button(QDialogButtonBox.StandardButton.Cancel)
+        assert ok_button is not None and cancel_button is not None
+        ok_button.setText("Ajouter")
+        cancel_button.setText("Annuler")
         root.addWidget(self.buttons)
 
     @staticmethod
-    def _labelled_row(form: QFormLayout, label: str, widget: QWidget):
+    def _labelled_row(form: QFormLayout, label: str, widget: QWidget) -> QWidget | None:
         """Add a row and return the auto-created label widget so we can toggle visibility."""
         form.addRow(label, widget)
         return form.labelForField(widget)
@@ -147,7 +152,7 @@ class AddTransactionDialog(QDialog):
     # ── Visibility logic ──────────────────────────────────────────────────────
 
     def _current_flow_type(self) -> FlowType:
-        return self.flow_combo.currentData()
+        return cast(FlowType, self.flow_combo.currentData())
 
     def _on_flow_type_changed(self) -> None:
         ft = self._current_flow_type()
