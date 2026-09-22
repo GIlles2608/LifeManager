@@ -33,7 +33,7 @@ from PyQt6.QtWidgets import (
 
 from lifemanager.finance.application.dto import TransactionDTO
 from lifemanager.finance.controllers import FinanceController
-from lifemanager.finance.models import FlowType, SenseType
+from lifemanager.finance.domain.enums import FlowType, SenseType
 
 
 class AddTransactionDialog(QDialog):

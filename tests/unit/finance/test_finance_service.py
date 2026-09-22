@@ -12,9 +12,11 @@ from unittest.mock import MagicMock
 import pytest
 
 from lifemanager.core.events.bus import Events, bus
-from lifemanager.core.exceptions.exceptions import NotFoundError, ValidationError
+from lifemanager.core.exceptions.exceptions import NotFoundError
 from lifemanager.finance.application.dto import TransactionDTO
-from lifemanager.finance.models import FlowType, SenseType, Transaction
+from lifemanager.finance.domain.entities import Debt, Transaction
+from lifemanager.finance.domain.enums import FlowType, SenseType
+from lifemanager.finance.domain.exceptions import ValidationError
 from lifemanager.finance.services.finance_service import (
     BudgetCheckResult,
     FinanceService,
@@ -224,7 +226,7 @@ class TestCheckBudget:
         service._budget_repo.get_by_category_and_month.return_value = None
         category = MagicMock()
         category.name = "Loisirs"
-        service._category_repo.find_by_id.return_value = category
+        service._category_repo.find_read_by_id.return_value = category
         service._tx_repo.total_spent_by_category.return_value = Decimal(999)
 
         result = service.check_budget(uuid.uuid4(), "2026-05")
@@ -240,7 +242,7 @@ class TestCheckBudget:
         )
         cat = MagicMock()
         cat.name = "Alim"
-        service._category_repo.find_by_id.return_value = cat
+        service._category_repo.find_read_by_id.return_value = cat
         service._tx_repo.total_spent_by_category.return_value = Decimal(80)
 
         result = service.check_budget(uuid.uuid4(), "2026-05")
@@ -254,7 +256,7 @@ class TestCheckBudget:
         )
         cat = MagicMock()
         cat.name = "Alim"
-        service._category_repo.find_by_id.return_value = cat
+        service._category_repo.find_read_by_id.return_value = cat
         service._tx_repo.total_spent_by_category.return_value = Decimal(250)
 
         result = service.check_budget(uuid.uuid4(), "2026-05")
@@ -297,16 +299,27 @@ class TestMonthlyKPIs:
 
 class TestUpdateDebtBalance:
     def test_updates_and_emits(self, service, captured_events):
-        debt = MagicMock()
-        service._debt_repo.find_by_id.return_value = debt
+        debt = Debt(
+            id=uuid.uuid4(),
+            name="Pret",
+            debt_type="personnel",
+            initial_amount=Decimal(1000),
+            current_balance=Decimal(1000),
+            monthly_target=Decimal(100),
+            status="active",
+            started_at=date(2026, 1, 1),
+        )
+        service._debt_repo.find_domain_by_id.return_value = debt
 
-        service.update_debt_balance(uuid.uuid4(), Decimal(500))
+        debt_id = uuid.uuid4()
+        service.update_debt_balance(debt_id, Decimal(500))
 
-        assert debt.current_balance == Decimal(500)
+        service._debt_repo.save_domain.assert_called_once()
+        assert service._debt_repo.save_domain.call_args.args[0].current_balance == Decimal(500)
         assert Events.DEBT_UPDATED in [e[0] for e in captured_events]
 
     def test_unknown_debt_raises(self, service):
-        service._debt_repo.find_by_id.return_value = None
+        service._debt_repo.find_domain_by_id.return_value = None
         with pytest.raises(NotFoundError):
             service.update_debt_balance(uuid.uuid4(), Decimal(500))
 

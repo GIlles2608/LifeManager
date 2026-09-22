@@ -8,11 +8,11 @@ Never touches SQLAlchemy directly: all DB access flows through repositories.
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 
 from lifemanager.core.events.bus import Events, bus
-from lifemanager.core.exceptions.exceptions import NotFoundError, ValidationError
+from lifemanager.core.exceptions.exceptions import NotFoundError
 from lifemanager.finance.application.dto import (
     AccountReadDTO,
     CategoryReadDTO,
@@ -21,6 +21,9 @@ from lifemanager.finance.application.dto import (
     TransactionDTO,
     TransactionReadDTO,
 )
+from lifemanager.finance.domain.entities import Transaction as TransactionEntity
+from lifemanager.finance.domain.enums import FlowType
+from lifemanager.finance.domain.exceptions import ValidationError
 from lifemanager.finance.domain.ports import (
     AccountRepositoryPort,
     BudgetRepositoryPort,
@@ -28,10 +31,6 @@ from lifemanager.finance.domain.ports import (
     DebtRepositoryPort,
     SavingsGoalRepositoryPort,
     TransactionRepositoryPort,
-)
-from lifemanager.finance.models import (
-    FlowType,
-    Transaction,
 )
 
 # ── DTOs ──────────────────────────────────────────────────────────────────────
@@ -89,7 +88,8 @@ class FinanceService:
         """Validate, persist, check budget if applicable, emit events."""
         self._validate_transaction(dto)
 
-        tx = Transaction(
+        tx = TransactionEntity(
+            id=uuid.uuid4(),
             date=dto.date,
             amount=dto.amount,
             flow_type=dto.flow_type.value,
@@ -193,12 +193,12 @@ class FinanceService:
         """Update a debt's current balance and emit a DEBT_UPDATED event."""
         if new_balance < 0:
             raise ValidationError("Debt balance cannot be negative.")
-        debt = self._debt_repo.find_by_id(debt_id)
+        debt = self._debt_repo.find_domain_by_id(debt_id)
         if debt is None:
             raise NotFoundError("Debt", debt_id)
-        debt.current_balance = new_balance
-        self._debt_repo.add(debt)
-        bus.emit(Events.DEBT_UPDATED, debt)
+        updated_debt = replace(debt, current_balance=new_balance)
+        self._debt_repo.save_domain(updated_debt)
+        bus.emit(Events.DEBT_UPDATED, updated_debt)
 
     # ── Private ───────────────────────────────────────────────────────────────
 

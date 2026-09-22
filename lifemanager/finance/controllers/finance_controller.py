@@ -29,6 +29,7 @@ from lifemanager.finance.application.dto import (
     TransactionDTO,
     TransactionReadDTO,
 )
+from lifemanager.finance.domain.exceptions import FinanceDomainError
 from lifemanager.finance.services.finance_service import (
     BudgetCheckResult,
     FinanceService,
@@ -141,10 +142,10 @@ class FinanceController(QObject):
         """
         try:
             with get_session() as session:
-                from lifemanager.finance.bootstrap import build_finance_service
+                from lifemanager.finance.infrastructure.bootstrap import build_finance_service
 
                 svc = build_finance_service(session)
                 return op(svc)
-        except LifeManagerError as e:
+        except (LifeManagerError, FinanceDomainError) as e:
             self.error.emit(str(e))
             return None

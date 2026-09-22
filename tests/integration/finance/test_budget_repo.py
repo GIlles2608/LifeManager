@@ -7,7 +7,7 @@ from decimal import Decimal
 import pytest
 
 from lifemanager.finance.models import Budget, Category, GrandType
-from lifemanager.finance.repositories.budget_repo import BudgetRepository
+from lifemanager.finance.infrastructure.persistence.repositories.budget_repo import BudgetRepository
 
 
 @pytest.fixture

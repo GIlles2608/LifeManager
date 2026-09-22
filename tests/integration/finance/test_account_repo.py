@@ -9,7 +9,7 @@ from decimal import Decimal
 import pytest
 
 from lifemanager.finance.models import Account, AccountType, FlowType, SenseType
-from lifemanager.finance.repositories.account_repo import AccountRepository
+from lifemanager.finance.infrastructure.persistence.repositories.account_repo import AccountRepository
 
 
 @pytest.fixture

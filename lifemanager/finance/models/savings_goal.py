@@ -1,4 +1,5 @@
 """SavingsGoal model — a target amount to save by a given date."""
+
 from __future__ import annotations
 
 from datetime import date
@@ -9,7 +10,7 @@ from sqlalchemy import Date, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from lifemanager.core.models.base import BaseModel
-from lifemanager.finance.models.enums import GoalStatus
+from lifemanager.finance.domain.enums import GoalStatus
 
 if TYPE_CHECKING:
     from lifemanager.finance.models.transaction import Transaction
@@ -25,16 +26,4 @@ class SavingsGoal(BaseModel):
     target_date: Mapped[date] = mapped_column(Date, nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default=GoalStatus.ACTIF)
 
-    transactions: Mapped[list[Transaction]] = relationship(
-        "Transaction", back_populates="goal"
-    )
-
-    @property
-    def remaining(self) -> Decimal:
-        return self.target_amount - self.current_amount
-
-    @property
-    def progress(self) -> float:
-        if self.target_amount == 0:
-            return 0.0
-        return float(self.current_amount / self.target_amount)
+    transactions: Mapped[list[Transaction]] = relationship("Transaction", back_populates="goal")

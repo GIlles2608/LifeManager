@@ -1,15 +1,16 @@
-"""Finance domain enums — shared across all finance models."""
+"""Pure Finance domain enumerations."""
+
 from __future__ import annotations
 
 from enum import Enum
 
 
 class FlowType(str, Enum):
-    REVENU    = "revenu"
-    DEPENSE   = "depense"
+    REVENU = "revenu"
+    DEPENSE = "depense"
     TRANSFERT = "transfert"
-    DETTE     = "dette"
-    EPARGNE   = "epargne"
+    DETTE = "dette"
+    EPARGNE = "epargne"
 
 
 class SenseType(str, Enum):
@@ -24,26 +25,26 @@ class AccountType(str, Enum):
 
 
 class GrandType(str, Enum):
-    REVENU    = "revenu"
-    DEPENSE   = "depense"
-    EPARGNE   = "epargne"
-    DETTE     = "dette"
+    REVENU = "revenu"
+    DEPENSE = "depense"
+    EPARGNE = "epargne"
+    DETTE = "dette"
     TRANSFERT = "transfert"
 
 
 class NatureType(str, Enum):
-    FIXE     = "fixe"
+    FIXE = "fixe"
     VARIABLE = "variable"
-    NA       = "na"
+    NA = "na"
 
 
 class DebtStatus(str, Enum):
-    ACTIVE    = "active"
-    SOLDEE    = "soldee"
+    ACTIVE = "active"
+    SOLDEE = "soldee"
     SUSPENDUE = "suspendue"
 
 
 class GoalStatus(str, Enum):
-    ACTIF     = "actif"
-    ATTEINT   = "atteint"
+    ACTIF = "actif"
+    ATTEINT = "atteint"
     ABANDONNE = "abandonne"

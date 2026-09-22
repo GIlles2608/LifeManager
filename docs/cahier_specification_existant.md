@@ -143,7 +143,7 @@ Toutes définies dans [core/exceptions/exceptions.py](../lifemanager/core/except
 
 ### 3.3 Couche Modèles (Finance)
 
-#### 3.3.1 Énumérations (`finance.models.enums`)
+#### 3.3.1 Énumérations (`finance.domain.enums`)
 
 | Enum | Valeurs |
 |---|---|

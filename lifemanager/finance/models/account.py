@@ -1,4 +1,5 @@
 """Account model — bank account, savings account, cash, etc."""
+
 from __future__ import annotations
 
 from decimal import Decimal
@@ -8,7 +9,7 @@ from sqlalchemy import Boolean, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from lifemanager.core.models.base import BaseModel
-from lifemanager.finance.models.enums import AccountType
+from lifemanager.finance.domain.enums import AccountType
 
 if TYPE_CHECKING:
     from lifemanager.finance.models.transaction import Transaction

@@ -15,7 +15,7 @@ from PyQt6.QtCore import QAbstractTableModel, QModelIndex, QObject, Qt
 
 from lifemanager.core.utils.formatting import format_amount, format_short_date
 from lifemanager.finance.application.dto import TransactionReadDTO
-from lifemanager.finance.models import SenseType
+from lifemanager.finance.domain.enums import SenseType
 
 
 class TransactionTableModel(QAbstractTableModel):
@@ -40,11 +40,13 @@ class TransactionTableModel(QAbstractTableModel):
 
     # ── Qt model interface ────────────────────────────────────────────────────
 
-    def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:
-        return 0 if parent.isValid() else len(self._rows)
+    def rowCount(self, parent: QModelIndex | None = None) -> int:
+        index = parent if parent is not None else QModelIndex()
+        return 0 if index.isValid() else len(self._rows)
 
-    def columnCount(self, parent: QModelIndex = QModelIndex()) -> int:
-        return 0 if parent.isValid() else len(self.HEADERS)
+    def columnCount(self, parent: QModelIndex | None = None) -> int:
+        index = parent if parent is not None else QModelIndex()
+        return 0 if index.isValid() else len(self.HEADERS)
 
     def headerData(
         self,

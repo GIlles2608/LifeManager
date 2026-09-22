@@ -8,7 +8,7 @@ from decimal import Decimal
 import pytest
 
 from lifemanager.finance.models import GoalStatus, SavingsGoal
-from lifemanager.finance.repositories.savings_goal_repo import SavingsGoalRepository
+from lifemanager.finance.infrastructure.persistence.repositories.savings_goal_repo import SavingsGoalRepository
 
 
 @pytest.fixture

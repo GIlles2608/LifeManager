@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
-from lifemanager.finance.models import FlowType, SenseType
+from lifemanager.finance.domain.enums import FlowType, SenseType
 
 
 @dataclass(frozen=True)

@@ -5,14 +5,22 @@ from __future__ import annotations
 import uuid
 
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
-from lifemanager.core.repositories.base import BaseRepository
 from lifemanager.finance.application.dto import CategoryReadDTO
-from lifemanager.finance.models import Category, GrandType
+from lifemanager.finance.domain.enums import GrandType
+from lifemanager.finance.models import Category
 
 
-class CategoryRepository(BaseRepository[Category]):
+class CategoryRepository:
     model = Category
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def find_by_id(self, entity_id: uuid.UUID) -> Category | None:
+        """Return the ORM category row, or None if it doesn't exist."""
+        return self._session.get(Category, entity_id)
 
     def list_active(self) -> list[Category]:
         stmt = select(Category).where(Category.is_active.is_(True)).order_by(Category.name)

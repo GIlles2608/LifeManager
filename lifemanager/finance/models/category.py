@@ -1,4 +1,5 @@
 """Category model — self-referencing, max depth 2."""
+
 from __future__ import annotations
 
 import uuid
@@ -9,7 +10,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from lifemanager.core.models.base import BaseModel
-from lifemanager.finance.models.enums import NatureType
+from lifemanager.finance.domain.enums import NatureType
 
 if TYPE_CHECKING:
     from lifemanager.finance.models.budget import Budget
@@ -27,15 +28,9 @@ class Category(BaseModel):
         UUID(as_uuid=True), ForeignKey("category.id"), nullable=True
     )
 
-    parent: Mapped["Category | None"] = relationship(
+    parent: Mapped[Category | None] = relationship(
         "Category", remote_side="Category.id", back_populates="children"
     )
-    children: Mapped[list["Category"]] = relationship(
-        "Category", back_populates="parent"
-    )
-    transactions: Mapped[list[Transaction]] = relationship(
-        "Transaction", back_populates="category"
-    )
-    budgets: Mapped[list[Budget]] = relationship(
-        "Budget", back_populates="category"
-    )
+    children: Mapped[list[Category]] = relationship("Category", back_populates="parent")
+    transactions: Mapped[list[Transaction]] = relationship("Transaction", back_populates="category")
+    budgets: Mapped[list[Budget]] = relationship("Budget", back_populates="category")
