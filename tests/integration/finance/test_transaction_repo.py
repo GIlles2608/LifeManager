@@ -86,9 +86,9 @@ class TestListByMonthWithRelations:
 
         result = repo.list_by_month_with_relations("2026-03")
 
-        assert result[0].account.name == account.name
-        assert result[0].category is not None
-        assert result[0].category.name == category.name
+        assert result[0].account_name == account.name
+        assert result[0].category_name is not None
+        assert result[0].category_name == category.name
 
 
 class TestListByAccount:

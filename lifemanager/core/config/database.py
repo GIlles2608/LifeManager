@@ -34,7 +34,6 @@ _SessionLocal = sessionmaker(
     bind=_engine,
     autocommit=False,
     autoflush=False,
-    expire_on_commit=False,  # avoid lazy-load issues after commit
 )
 
 

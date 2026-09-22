@@ -21,12 +21,18 @@ from PyQt6.QtCore import QObject, pyqtSignal
 
 from lifemanager.core.config.database import get_session
 from lifemanager.core.exceptions.exceptions import LifeManagerError
-from lifemanager.finance.models import Account, Category, Debt, SavingsGoal, Transaction
+from lifemanager.finance.application.dto import (
+    AccountReadDTO,
+    CategoryReadDTO,
+    DebtReadDTO,
+    SavingsGoalReadDTO,
+    TransactionDTO,
+    TransactionReadDTO,
+)
 from lifemanager.finance.services.finance_service import (
     BudgetCheckResult,
     FinanceService,
     MonthlyKPIs,
-    TransactionDTO,
 )
 
 T = TypeVar("T")
@@ -36,7 +42,7 @@ class FinanceController(QObject):
     """Sync entry points for views; signals for outbound notifications."""
 
     # ── Outbound signals (views connect to these) ─────────────────────────────
-    transaction_created = pyqtSignal(object)  # Transaction
+    transaction_created = pyqtSignal(object)  # TransactionReadDTO
     transaction_deleted = pyqtSignal(object)  # uuid.UUID
     kpis_refreshed = pyqtSignal(object)  # MonthlyKPIs
     budget_checked = pyqtSignal(object)  # BudgetCheckResult
@@ -45,10 +51,10 @@ class FinanceController(QObject):
 
     # ── Public API ────────────────────────────────────────────────────────────
 
-    def create_transaction(self, dto: TransactionDTO) -> Transaction | None:
+    def create_transaction(self, dto: TransactionDTO) -> TransactionReadDTO | None:
         """Create a transaction. Returns None on validation/persistence error."""
 
-        def op(svc: FinanceService) -> Transaction:
+        def op(svc: FinanceService) -> TransactionReadDTO:
             return svc.create_transaction(dto)
 
         tx = self._run(op)
@@ -78,26 +84,26 @@ class FinanceController(QObject):
             self.kpis_refreshed.emit(kpis)
         return kpis
 
-    def list_transactions(self, month: str) -> list[Transaction] | None:
+    def list_transactions(self, month: str) -> list[TransactionReadDTO] | None:
         """Returns transactions for the month, or None on error."""
 
-        def op(svc: FinanceService) -> list[Transaction]:
+        def op(svc: FinanceService) -> list[TransactionReadDTO]:
             return svc.list_transactions(month)
 
         return self._run(op)
 
     # ── Lookups (used to populate selectors in dialogs) ───────────────────────
 
-    def list_accounts(self) -> list[Account]:
+    def list_accounts(self) -> list[AccountReadDTO]:
         return self._run(lambda svc: svc.list_accounts()) or []
 
-    def list_categories(self) -> list[Category]:
+    def list_categories(self) -> list[CategoryReadDTO]:
         return self._run(lambda svc: svc.list_categories()) or []
 
-    def list_active_debts(self) -> list[Debt]:
+    def list_active_debts(self) -> list[DebtReadDTO]:
         return self._run(lambda svc: svc.list_active_debts()) or []
 
-    def list_active_goals(self) -> list[SavingsGoal]:
+    def list_active_goals(self) -> list[SavingsGoalReadDTO]:
         return self._run(lambda svc: svc.list_active_goals()) or []
 
     def check_budget(self, category_id: uuid.UUID, month: str) -> BudgetCheckResult | None:

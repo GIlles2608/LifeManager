@@ -9,11 +9,18 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import date
 from decimal import Decimal
 
 from lifemanager.core.events.bus import Events, bus
 from lifemanager.core.exceptions.exceptions import NotFoundError, ValidationError
+from lifemanager.finance.application.dto import (
+    AccountReadDTO,
+    CategoryReadDTO,
+    DebtReadDTO,
+    SavingsGoalReadDTO,
+    TransactionDTO,
+    TransactionReadDTO,
+)
 from lifemanager.finance.domain.ports import (
     AccountRepositoryPort,
     BudgetRepositoryPort,
@@ -23,31 +30,11 @@ from lifemanager.finance.domain.ports import (
     TransactionRepositoryPort,
 )
 from lifemanager.finance.models import (
-    Account,
-    Category,
-    Debt,
     FlowType,
-    SavingsGoal,
-    SenseType,
     Transaction,
 )
 
 # ── DTOs ──────────────────────────────────────────────────────────────────────
-
-
-@dataclass(frozen=True)
-class TransactionDTO:
-    """Validated input from controller to service. Frozen — value object."""
-
-    date: date
-    amount: Decimal
-    flow_type: FlowType
-    sense: SenseType
-    label: str
-    account_id: uuid.UUID
-    category_id: uuid.UUID | None = None
-    debt_id: uuid.UUID | None = None
-    goal_id: uuid.UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -98,7 +85,7 @@ class FinanceService:
 
     # ── Transactions ──────────────────────────────────────────────────────────
 
-    def create_transaction(self, dto: TransactionDTO) -> Transaction:
+    def create_transaction(self, dto: TransactionDTO) -> TransactionReadDTO:
         """Validate, persist, check budget if applicable, emit events."""
         self._validate_transaction(dto)
 
@@ -121,34 +108,37 @@ class FinanceService:
                 bus.emit(Events.BUDGET_EXCEEDED, check)
 
         bus.emit(Events.TRANSACTION_CREATED, tx)
-        return tx
+        read_dto = self._tx_repo.read_by_id(tx.id)
+        if read_dto is None:
+            raise NotFoundError("Transaction", tx.id)
+        return read_dto
 
     def delete_transaction(self, transaction_id: uuid.UUID) -> None:
         """Delete a transaction by id and emit a TRANSACTION_DELETED event."""
         self._tx_repo.delete(transaction_id)
         bus.emit(Events.TRANSACTION_DELETED, transaction_id)
 
-    def list_transactions(self, month: str) -> list[Transaction]:
-        """Return transactions for the month, with account and category eager-loaded."""
+    def list_transactions(self, month: str) -> list[TransactionReadDTO]:
+        """Return immutable, presentation-ready transactions for the month."""
         return self._tx_repo.list_by_month_with_relations(month)
 
     # ── Lookups (used by UI to populate selectors) ────────────────────────────
 
-    def list_accounts(self) -> list[Account]:
-        """Return all active accounts."""
-        return self._account_repo.list_active()
+    def list_accounts(self) -> list[AccountReadDTO]:
+        """Return all active accounts as immutable read DTOs."""
+        return self._account_repo.list_active_read()
 
-    def list_categories(self) -> list[Category]:
-        """Return all active categories."""
-        return self._category_repo.list_active()
+    def list_categories(self) -> list[CategoryReadDTO]:
+        """Return all active categories as immutable read DTOs."""
+        return self._category_repo.list_active_read()
 
-    def list_active_debts(self) -> list[Debt]:
-        """Return all active debts."""
-        return self._debt_repo.list_active()
+    def list_active_debts(self) -> list[DebtReadDTO]:
+        """Return all active debts as immutable read DTOs."""
+        return self._debt_repo.list_active_read()
 
-    def list_active_goals(self) -> list[SavingsGoal]:
-        """Return all active savings goals."""
-        return self._goal_repo.list_active()
+    def list_active_goals(self) -> list[SavingsGoalReadDTO]:
+        """Return all active savings goals as immutable read DTOs."""
+        return self._goal_repo.list_active_read()
 
     # ── Budget ────────────────────────────────────────────────────────────────
 
@@ -158,7 +148,7 @@ class FinanceService:
         If no budget is defined, ceiling=0 and is_exceeded=False (no rule to break).
         """
         budget = self._budget_repo.get_by_category_and_month(category_id, month)
-        category = self._category_repo.find_by_id(category_id)
+        category = self._category_repo.find_read_by_id(category_id)
 
         ceiling = budget.ceiling if budget is not None else Decimal(0)
         spent = self._tx_repo.total_spent_by_category(category_id, month)

@@ -5,12 +5,10 @@ from lifemanager.finance.services.finance_service import (
     BudgetCheckResult,
     FinanceService,
     MonthlyKPIs,
-    TransactionDTO,
 )
 
 __all__ = [
     "BudgetCheckResult",
     "FinanceService",
     "MonthlyKPIs",
-    "TransactionDTO",
 ]

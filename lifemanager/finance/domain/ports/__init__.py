@@ -4,6 +4,13 @@ import uuid
 from decimal import Decimal
 from typing import Generic, Protocol, TypeVar
 
+from lifemanager.finance.application.dto import (
+    AccountReadDTO,
+    CategoryReadDTO,
+    DebtReadDTO,
+    SavingsGoalReadDTO,
+    TransactionReadDTO,
+)
 from lifemanager.finance.models import (
     Account,
     Budget,
@@ -30,7 +37,9 @@ class BaseRepositoryPort(Protocol, Generic[T]):
 
 
 class TransactionRepositoryPort(BaseRepositoryPort[Transaction], Protocol):
-    def list_by_month_with_relations(self, month: str) -> list[Transaction]: ...
+    def list_by_month_with_relations(self, month: str) -> list[TransactionReadDTO]: ...
+
+    def read_by_id(self, transaction_id: uuid.UUID) -> TransactionReadDTO | None: ...
 
     def total_spent_by_category(self, category_id: uuid.UUID, month: str) -> Decimal: ...
 
@@ -46,16 +55,26 @@ class CategoryRepositoryPort(BaseRepositoryPort[Category], Protocol):
 
     def list_active(self) -> list[Category]: ...
 
+    def list_active_read(self) -> list[CategoryReadDTO]: ...
+
+    def find_read_by_id(self, entity_id: uuid.UUID) -> CategoryReadDTO | None: ...
+
 
 class DebtRepositoryPort(BaseRepositoryPort[Debt], Protocol):
     def find_by_id(self, entity_id: uuid.UUID) -> Debt | None: ...
 
     def list_active(self) -> list[Debt]: ...
 
+    def list_active_read(self) -> list[DebtReadDTO]: ...
+
 
 class AccountRepositoryPort(BaseRepositoryPort[Account], Protocol):
     def list_active(self) -> list[Account]: ...
 
+    def list_active_read(self) -> list[AccountReadDTO]: ...
+
 
 class SavingsGoalRepositoryPort(BaseRepositoryPort[SavingsGoal], Protocol):
     def list_active(self) -> list[SavingsGoal]: ...
+
+    def list_active_read(self) -> list[SavingsGoalReadDTO]: ...

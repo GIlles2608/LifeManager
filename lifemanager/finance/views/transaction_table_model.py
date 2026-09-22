@@ -14,7 +14,8 @@ from typing import Any
 from PyQt6.QtCore import QAbstractTableModel, QModelIndex, QObject, Qt
 
 from lifemanager.core.utils.formatting import format_amount, format_short_date
-from lifemanager.finance.models import SenseType, Transaction
+from lifemanager.finance.application.dto import TransactionReadDTO
+from lifemanager.finance.models import SenseType
 
 
 class TransactionTableModel(QAbstractTableModel):
@@ -23,16 +24,16 @@ class TransactionTableModel(QAbstractTableModel):
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
-        self._rows: list[Transaction] = []
+        self._rows: list[TransactionReadDTO] = []
 
     # ── Public API ────────────────────────────────────────────────────────────
 
-    def set_transactions(self, rows: list[Transaction]) -> None:
+    def set_transactions(self, rows: list[TransactionReadDTO]) -> None:
         self.beginResetModel()
         self._rows = rows
         self.endResetModel()
 
-    def transaction_at(self, row: int) -> Transaction | None:
+    def transaction_at(self, row: int) -> TransactionReadDTO | None:
         if 0 <= row < len(self._rows):
             return self._rows[row]
         return None
@@ -67,9 +68,9 @@ class TransactionTableModel(QAbstractTableModel):
             if col == self.COL_LABEL:
                 return tx.label
             if col == self.COL_CATEGORY:
-                return tx.category.name if tx.category is not None else "—"
+                return tx.category_name or "—"
             if col == self.COL_ACCOUNT:
-                return tx.account.name if tx.account is not None else "—"
+                return tx.account_name
             if col == self.COL_AMOUNT:
                 signed = tx.amount if tx.sense == SenseType.ENTREE.value else -tx.amount
                 return format_amount(Decimal(signed))
