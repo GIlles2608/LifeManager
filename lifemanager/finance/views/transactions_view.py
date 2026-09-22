@@ -31,8 +31,8 @@ from PyQt6.QtWidgets import (
 )
 
 from lifemanager.core.utils.formatting import format_amount
+from lifemanager.finance.application.dto import TransactionReadDTO
 from lifemanager.finance.controllers import FinanceController
-from lifemanager.finance.models import Transaction
 from lifemanager.finance.services.finance_service import MonthlyKPIs
 from lifemanager.finance.views.add_transaction_dialog import AddTransactionDialog
 from lifemanager.finance.views.transaction_table_model import TransactionTableModel
@@ -184,7 +184,7 @@ class TransactionsView(QWidget):
     def _on_month_changed(self, _index: int) -> None:
         self._refresh()
 
-    def _on_transaction_created(self, _tx: Transaction) -> None:
+    def _on_transaction_created(self, _tx: TransactionReadDTO) -> None:
         self._refresh()
 
     def _on_transaction_deleted(self, _tx_id: uuid.UUID) -> None:
@@ -220,7 +220,7 @@ class TransactionsView(QWidget):
         self._controller.delete_transaction(tx.id)
         # Success/failure handled via transaction_deleted / error signals.
 
-    def _selected_transaction(self) -> Transaction | None:
+    def _selected_transaction(self) -> TransactionReadDTO | None:
         selection_model = self.table.selectionModel()
         assert selection_model is not None
         indexes = selection_model.selectedRows()

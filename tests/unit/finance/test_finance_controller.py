@@ -13,17 +13,18 @@ import uuid
 from contextlib import contextmanager
 from datetime import date
 from decimal import Decimal
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from lifemanager.core.exceptions.exceptions import NotFoundError, ValidationError
+from lifemanager.finance.application.dto import TransactionDTO
 from lifemanager.finance.controllers.finance_controller import FinanceController
 from lifemanager.finance.models import FlowType, SenseType
 from lifemanager.finance.services.finance_service import (
     BudgetCheckResult,
     MonthlyKPIs,
-    TransactionDTO,
 )
 
 
@@ -71,9 +72,9 @@ def _valid_dto() -> TransactionDTO:
     )
 
 
-def _capture(signal) -> list[tuple]:
+def _capture(signal: Any) -> list[tuple[Any, ...]]:
     """Connect a list-collector to a Qt signal; return the list."""
-    captured: list[tuple] = []
+    captured: list[tuple[Any, ...]] = []
     signal.connect(lambda *args: captured.append(args))
     return captured
 

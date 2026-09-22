@@ -7,16 +7,17 @@ Sum semantics:
 - cashflow() is the only method that returns a signed value, derived from
   `sense` (ENTREE - SORTIE), independent of `flow_type`.
 """
+
 from __future__ import annotations
 
 import uuid
 from decimal import Decimal
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import joinedload
 
 from lifemanager.core.repositories.base import BaseRepository
-from lifemanager.finance.models import FlowType, SenseType, Transaction
+from lifemanager.finance.application.dto import TransactionReadDTO
+from lifemanager.finance.models import Account, Category, FlowType, SenseType, Transaction
 
 
 class TransactionRepository(BaseRepository[Transaction]):
@@ -33,22 +34,55 @@ class TransactionRepository(BaseRepository[Transaction]):
         )
         return list(self._session.scalars(stmt))
 
-    def list_by_month_with_relations(self, month: str) -> list[Transaction]:
-        """
-        Same as list_by_month, but eager-loads account and category to avoid
-        N+1 queries when a UI displays one row per transaction. Use this when
-        the caller will read tx.account.name / tx.category.name for every row.
-        """
+    def list_by_month_with_relations(self, month: str) -> list[TransactionReadDTO]:
+        """Return presentation-ready transactions for a YYYY-MM month."""
         stmt = (
-            select(Transaction)
-            .options(
-                joinedload(Transaction.account),
-                joinedload(Transaction.category),
-            )
+            select(Transaction, Account.name, Category.name)
+            .join(Account, Transaction.account_id == Account.id)
+            .outerjoin(Category, Transaction.category_id == Category.id)
             .where(func.to_char(Transaction.date, "YYYY-MM") == month)
             .order_by(Transaction.date.desc())
         )
-        return list(self._session.scalars(stmt))
+        return [
+            self._to_read_dto(transaction, account_name, category_name)
+            for transaction, account_name, category_name in self._session.execute(stmt)
+        ]
+
+    def read_by_id(self, transaction_id: uuid.UUID) -> TransactionReadDTO | None:
+        """Return one transaction as a flattened DTO, if it exists."""
+        stmt = (
+            select(Transaction, Account.name, Category.name)
+            .join(Account, Transaction.account_id == Account.id)
+            .outerjoin(Category, Transaction.category_id == Category.id)
+            .where(Transaction.id == transaction_id)
+        )
+        row = self._session.execute(stmt).first()
+        if row is None:
+            return None
+        transaction, account_name, category_name = row
+        return self._to_read_dto(transaction, account_name, category_name)
+
+    @staticmethod
+    def _to_read_dto(
+        transaction: Transaction,
+        account_name: str,
+        category_name: str | None,
+    ) -> TransactionReadDTO:
+        """Flatten an ORM transaction before it leaves the repository."""
+        return TransactionReadDTO(
+            id=transaction.id,
+            date=transaction.date,
+            amount=transaction.amount,
+            flow_type=transaction.flow_type,
+            sense=transaction.sense,
+            label=transaction.label,
+            account_id=transaction.account_id,
+            account_name=account_name,
+            category_id=transaction.category_id,
+            category_name=category_name,
+            debt_id=transaction.debt_id,
+            goal_id=transaction.goal_id,
+        )
 
     def list_by_account(self, account_id: uuid.UUID) -> list[Transaction]:
         stmt = (
@@ -85,9 +119,7 @@ class TransactionRepository(BaseRepository[Transaction]):
             flow_type=flow_type,
         )
 
-    def total_spent_by_category(
-        self, category_id: uuid.UUID, month: str
-    ) -> Decimal:
+    def total_spent_by_category(self, category_id: uuid.UUID, month: str) -> Decimal:
         """Σ amount of DEPENSE transactions tied to a category for the month."""
         return self._sum_amount(
             month=month,

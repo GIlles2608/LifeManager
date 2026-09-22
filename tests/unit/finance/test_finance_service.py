@@ -13,12 +13,12 @@ import pytest
 
 from lifemanager.core.events.bus import Events, bus
 from lifemanager.core.exceptions.exceptions import NotFoundError, ValidationError
-from lifemanager.finance.models import FlowType, SenseType
+from lifemanager.finance.application.dto import TransactionDTO
+from lifemanager.finance.models import FlowType, SenseType, Transaction
 from lifemanager.finance.services.finance_service import (
     BudgetCheckResult,
     FinanceService,
     MonthlyKPIs,
-    TransactionDTO,
 )
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -153,9 +153,13 @@ class TestCreateTransaction:
         service._tx_repo.add.side_effect = lambda tx: tx  # passthrough
 
         dto = _valid_dto(category_id=None)  # no category -> skip budget check
-        tx = service.create_transaction(dto)
+        service.create_transaction(dto)
 
-        service._tx_repo.add.assert_called_once_with(tx)
+        service._tx_repo.add.assert_called_once()
+        persisted = service._tx_repo.add.call_args.args[0]
+        assert isinstance(persisted, Transaction)
+        assert persisted.amount == dto.amount
+        service._tx_repo.read_by_id.assert_called_once_with(persisted.id)
         events = [e[0] for e in captured_events]
         assert Events.TRANSACTION_CREATED in events
         assert Events.BUDGET_EXCEEDED not in events
@@ -167,7 +171,7 @@ class TestCreateTransaction:
         category = MagicMock(name="cat-mock")
         category.name = "Alimentation"
         service._budget_repo.get_by_category_and_month.return_value = budget
-        service._category_repo.find_by_id.return_value = category
+        service._category_repo.find_read_by_id.return_value = category
         service._tx_repo.total_spent_by_category.return_value = Decimal(150)
 
         service.create_transaction(_valid_dto())
