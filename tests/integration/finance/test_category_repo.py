@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from lifemanager.finance.models import Category, GrandType
-from lifemanager.finance.repositories.category_repo import CategoryRepository
+from lifemanager.finance.infrastructure.persistence.repositories.category_repo import CategoryRepository
 
 
 @pytest.fixture

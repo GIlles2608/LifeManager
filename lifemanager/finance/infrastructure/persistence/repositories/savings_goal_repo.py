@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
-from lifemanager.core.repositories.base import BaseRepository
 from lifemanager.finance.application.dto import SavingsGoalReadDTO
-from lifemanager.finance.models import GoalStatus, SavingsGoal
+from lifemanager.finance.domain.enums import GoalStatus
+from lifemanager.finance.models import SavingsGoal
 
 
-class SavingsGoalRepository(BaseRepository[SavingsGoal]):
+class SavingsGoalRepository:
     model = SavingsGoal
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
 
     def list_active(self) -> list[SavingsGoal]:
         stmt = (

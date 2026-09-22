@@ -6,14 +6,22 @@ import uuid
 from decimal import Decimal
 
 from sqlalchemy import case, func, select
+from sqlalchemy.orm import Session
 
-from lifemanager.core.repositories.base import BaseRepository
 from lifemanager.finance.application.dto import AccountReadDTO
-from lifemanager.finance.models import Account, SenseType, Transaction
+from lifemanager.finance.domain.enums import SenseType
+from lifemanager.finance.models import Account, Transaction
 
 
-class AccountRepository(BaseRepository[Account]):
+class AccountRepository:
     model = Account
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def find_by_id(self, entity_id: uuid.UUID) -> Account | None:
+        """Return the ORM account row, or None if it doesn't exist."""
+        return self._session.get(Account, entity_id)
 
     def list_active(self) -> list[Account]:
         stmt = select(Account).where(Account.is_active.is_(True)).order_by(Account.name)

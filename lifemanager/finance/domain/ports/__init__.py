@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from decimal import Decimal
-from typing import Generic, Protocol, TypeVar
+from typing import Protocol
 
 from lifemanager.finance.application.dto import (
     AccountReadDTO,
@@ -11,32 +11,21 @@ from lifemanager.finance.application.dto import (
     SavingsGoalReadDTO,
     TransactionReadDTO,
 )
-from lifemanager.finance.models import (
-    Account,
+from lifemanager.finance.domain.entities import (
     Budget,
-    Category,
     Debt,
-    FlowType,
-    SavingsGoal,
-    Transaction,
 )
+from lifemanager.finance.domain.entities import (
+    Transaction as TransactionEntity,
+)
+from lifemanager.finance.domain.enums import FlowType
 
-T = TypeVar("T")
 
-
-class BaseRepositoryPort(Protocol, Generic[T]):
-    def add(self, entity: T) -> T: ...
+class TransactionRepositoryPort(Protocol):
+    def add(self, entity: TransactionEntity) -> TransactionEntity: ...
 
     def delete(self, entity_id: uuid.UUID) -> None: ...
 
-    def get_by_id(self, entity_id: uuid.UUID) -> T: ...
-
-    def find_by_id(self, entity_id: uuid.UUID) -> T | None: ...
-
-    def list_all(self) -> list[T]: ...
-
-
-class TransactionRepositoryPort(BaseRepositoryPort[Transaction], Protocol):
     def list_by_month_with_relations(self, month: str) -> list[TransactionReadDTO]: ...
 
     def read_by_id(self, transaction_id: uuid.UUID) -> TransactionReadDTO | None: ...
@@ -46,35 +35,29 @@ class TransactionRepositoryPort(BaseRepositoryPort[Transaction], Protocol):
     def total_by_flow(self, flow_type: FlowType, month: str) -> Decimal: ...
 
 
-class BudgetRepositoryPort(BaseRepositoryPort[Budget], Protocol):
+class BudgetRepositoryPort(Protocol):
     def get_by_category_and_month(self, category_id: uuid.UUID, month: str) -> Budget | None: ...
 
 
-class CategoryRepositoryPort(BaseRepositoryPort[Category], Protocol):
-    def find_by_id(self, entity_id: uuid.UUID) -> Category | None: ...
-
-    def list_active(self) -> list[Category]: ...
-
+class CategoryRepositoryPort(Protocol):
     def list_active_read(self) -> list[CategoryReadDTO]: ...
 
     def find_read_by_id(self, entity_id: uuid.UUID) -> CategoryReadDTO | None: ...
 
 
-class DebtRepositoryPort(BaseRepositoryPort[Debt], Protocol):
-    def find_by_id(self, entity_id: uuid.UUID) -> Debt | None: ...
+class DebtRepositoryPort(Protocol):
+    def find_domain_by_id(self, entity_id: uuid.UUID) -> Debt | None: ...
+
+    def save_domain(self, entity: Debt) -> Debt: ...
 
     def list_active(self) -> list[Debt]: ...
 
     def list_active_read(self) -> list[DebtReadDTO]: ...
 
 
-class AccountRepositoryPort(BaseRepositoryPort[Account], Protocol):
-    def list_active(self) -> list[Account]: ...
-
+class AccountRepositoryPort(Protocol):
     def list_active_read(self) -> list[AccountReadDTO]: ...
 
 
-class SavingsGoalRepositoryPort(BaseRepositoryPort[SavingsGoal], Protocol):
-    def list_active(self) -> list[SavingsGoal]: ...
-
+class SavingsGoalRepositoryPort(Protocol):
     def list_active_read(self) -> list[SavingsGoalReadDTO]: ...

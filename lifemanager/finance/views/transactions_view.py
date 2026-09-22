@@ -14,7 +14,7 @@ Step 2: read-only data flow wired in.
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import cast
 
@@ -145,7 +145,7 @@ class TransactionsView(QWidget):
 
     def _populate_month_combo(self) -> None:
         """Fill with the last MONTHS_HISTORY months ending on the current month."""
-        today = date.today()
+        today = datetime.now(UTC).date()
         months: list[str] = []
         y, m = today.year, today.month
         for _ in range(self.MONTHS_HISTORY):

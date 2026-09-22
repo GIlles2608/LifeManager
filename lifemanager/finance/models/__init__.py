@@ -3,14 +3,10 @@ to import the package, not individual modules.
 
 Importing this package guarantees every model is registered on Base.metadata.
 """
+
 from __future__ import annotations
 
-from lifemanager.finance.models.account import Account
-from lifemanager.finance.models.alert import Alert
-from lifemanager.finance.models.budget import Budget
-from lifemanager.finance.models.category import Category
-from lifemanager.finance.models.debt import Debt
-from lifemanager.finance.models.enums import (
+from lifemanager.finance.domain.enums import (
     AccountType,
     DebtStatus,
     FlowType,
@@ -19,6 +15,11 @@ from lifemanager.finance.models.enums import (
     NatureType,
     SenseType,
 )
+from lifemanager.finance.models.account import Account
+from lifemanager.finance.models.alert import Alert
+from lifemanager.finance.models.budget import Budget
+from lifemanager.finance.models.category import Category
+from lifemanager.finance.models.debt import Debt
 from lifemanager.finance.models.savings_goal import SavingsGoal
 from lifemanager.finance.models.transaction import Transaction
 

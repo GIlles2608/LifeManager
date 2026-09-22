@@ -11,7 +11,7 @@ from decimal import Decimal
 import pytest
 
 from lifemanager.finance.models import Account, FlowType, SenseType
-from lifemanager.finance.repositories.transaction_repo import TransactionRepository
+from lifemanager.finance.infrastructure.persistence.repositories.transaction_repo import TransactionRepository
 
 
 @pytest.fixture

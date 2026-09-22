@@ -7,6 +7,7 @@ We patch the symbols at controller-module level so:
 
 Qt signals are exercised via pytest-qt's qtbot.waitSignal / capture pattern.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -27,7 +28,6 @@ from lifemanager.finance.services.finance_service import (
     MonthlyKPIs,
 )
 
-
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
 
@@ -44,16 +44,20 @@ def controller(qtbot, mock_service):
     - get_session() yields a dummy session (we don't care which one)
     - FinanceService(session) returns our pre-configured mock_service
     """
+
     @contextmanager
     def fake_get_session():
         yield MagicMock(name="session")
 
-    with patch(
-        "lifemanager.finance.controllers.finance_controller.get_session",
-        fake_get_session,
-    ), patch(
-        "lifemanager.finance.bootstrap.build_finance_service",
-        return_value=mock_service,
+    with (
+        patch(
+            "lifemanager.finance.controllers.finance_controller.get_session",
+            fake_get_session,
+        ),
+        patch(
+            "lifemanager.finance.infrastructure.bootstrap.build_finance_service",
+            return_value=mock_service,
+        ),
     ):
         ctl = FinanceController()
         qtbot.addWidget  # noqa: B018  - sanity that qtbot is alive (no widget here)
@@ -93,9 +97,7 @@ class TestCreateTransaction:
         assert result is fake_tx
         assert captured == [(fake_tx,)]
 
-    def test_returns_none_and_emits_error_on_validation(
-        self, controller, mock_service
-    ):
+    def test_returns_none_and_emits_error_on_validation(self, controller, mock_service):
         mock_service.create_transaction.side_effect = ValidationError("amount must be positive")
         ok_capt = _capture(controller.transaction_created)
         err_capt = _capture(controller.error)
@@ -146,11 +148,11 @@ class TestGetMonthlyKPIs:
     def test_returns_kpis_and_emits(self, controller, mock_service):
         kpis = MonthlyKPIs(
             month="2026-05",
-            revenues=Decimal("1200"),
-            expenses=Decimal("600"),
-            savings=Decimal("80"),
-            debt_repayments=Decimal("100"),
-            net=Decimal("420"),
+            revenues=Decimal(1200),
+            expenses=Decimal(600),
+            savings=Decimal(80),
+            debt_repayments=Decimal(100),
+            net=Decimal(420),
         )
         mock_service.get_monthly_kpis.return_value = kpis
         captured = _capture(controller.kpis_refreshed)
@@ -168,9 +170,9 @@ class TestCheckBudget:
     def test_returns_result_and_emits(self, controller, mock_service):
         result = BudgetCheckResult(
             category_name="Alim",
-            ceiling=Decimal("200"),
-            spent=Decimal("250"),
-            remaining=Decimal("0"),
+            ceiling=Decimal(200),
+            spent=Decimal(250),
+            remaining=Decimal(0),
             is_exceeded=True,
         )
         mock_service.check_budget.return_value = result
@@ -188,19 +190,17 @@ class TestCheckBudget:
 class TestUpdateDebtBalance:
     def test_success_returns_true_and_emits(self, controller, mock_service):
         captured = _capture(controller.debt_updated)
-        ok = controller.update_debt_balance(uuid.uuid4(), Decimal("500"))
+        ok = controller.update_debt_balance(uuid.uuid4(), Decimal(500))
 
         assert ok is True
         assert len(captured) == 1
 
-    def test_negative_balance_returns_false_and_emits_error(
-        self, controller, mock_service
-    ):
+    def test_negative_balance_returns_false_and_emits_error(self, controller, mock_service):
         mock_service.update_debt_balance.side_effect = ValidationError("negative")
         debt_capt = _capture(controller.debt_updated)
         err_capt = _capture(controller.error)
 
-        ok = controller.update_debt_balance(uuid.uuid4(), Decimal("-1"))
+        ok = controller.update_debt_balance(uuid.uuid4(), Decimal(-1))
 
         assert ok is False
         assert debt_capt == []

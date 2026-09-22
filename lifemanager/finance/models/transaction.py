@@ -1,4 +1,5 @@
 """Transaction model — atomic financial movement."""
+
 from __future__ import annotations
 
 import uuid
@@ -11,7 +12,6 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from lifemanager.core.models.base import BaseModel
-from lifemanager.finance.models.enums import SenseType
 
 if TYPE_CHECKING:
     from lifemanager.finance.models.account import Account
@@ -46,13 +46,3 @@ class Transaction(BaseModel):
     category: Mapped[Category | None] = relationship("Category", back_populates="transactions")
     debt: Mapped[Debt | None] = relationship("Debt", back_populates="transactions")
     goal: Mapped[SavingsGoal | None] = relationship("SavingsGoal", back_populates="transactions")
-
-    @property
-    def signed_amount(self) -> Decimal:
-        """Positive for entries, negative for exits."""
-        return self.amount if self.sense == SenseType.ENTREE else -self.amount
-
-    @property
-    def month(self) -> str:
-        """YYYY-MM string for grouping."""
-        return self.date.strftime("%Y-%m")
