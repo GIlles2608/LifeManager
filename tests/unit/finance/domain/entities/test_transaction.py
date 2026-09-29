@@ -3,6 +3,9 @@ from __future__ import annotations
 import uuid
 from datetime import date
 from decimal import Decimal
+from typing import Any, cast
+
+import pytest
 
 from lifemanager.finance.domain.entities import Transaction
 from lifemanager.finance.domain.enums import SenseType
@@ -34,9 +37,5 @@ def test_transaction_is_immutable() -> None:
         account_id=uuid.uuid4(),
     )
 
-    try:
-        transaction.label = "Autre"
-    except AttributeError:
-        pass
-    else:
-        raise AssertionError("Transaction must be immutable")
+    with pytest.raises(AttributeError):
+        cast(Any, transaction).label = "Autre"

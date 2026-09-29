@@ -1,9 +1,8 @@
 """
 Unit tests for FinanceController — no DB, no real service.
 
-We patch the symbols at controller-module level so:
-- get_session() returns a context-manager yielding a MagicMock session
-- FinanceService(...) returns a MagicMock service we can drive per-test
+The controller receives a mocked application service directly. This keeps the
+tests focused on the Qt bridge and signal behavior.
 
 Qt signals are exercised via pytest-qt's qtbot.waitSignal / capture pattern.
 """
@@ -11,22 +10,21 @@ Qt signals are exercised via pytest-qt's qtbot.waitSignal / capture pattern.
 from __future__ import annotations
 
 import uuid
-from contextlib import contextmanager
 from datetime import date
 from decimal import Decimal
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
 from lifemanager.core.exceptions.exceptions import NotFoundError, ValidationError
 from lifemanager.finance.application.dto import TransactionDTO
-from lifemanager.finance.controllers.finance_controller import FinanceController
-from lifemanager.finance.models import FlowType, SenseType
-from lifemanager.finance.services.finance_service import (
+from lifemanager.finance.application.services.finance_service import (
     BudgetCheckResult,
     MonthlyKPIs,
 )
+from lifemanager.finance.controllers.finance_controller import FinanceController
+from lifemanager.finance.models import FlowType, SenseType
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -39,29 +37,9 @@ def mock_service():
 
 @pytest.fixture
 def controller(qtbot, mock_service):
-    """
-    FinanceController wired so that:
-    - get_session() yields a dummy session (we don't care which one)
-    - FinanceService(session) returns our pre-configured mock_service
-    """
-
-    @contextmanager
-    def fake_get_session():
-        yield MagicMock(name="session")
-
-    with (
-        patch(
-            "lifemanager.finance.controllers.finance_controller.get_session",
-            fake_get_session,
-        ),
-        patch(
-            "lifemanager.finance.infrastructure.bootstrap.build_finance_service",
-            return_value=mock_service,
-        ),
-    ):
-        ctl = FinanceController()
-        qtbot.addWidget  # noqa: B018  - sanity that qtbot is alive (no widget here)
-        yield ctl
+    ctl = FinanceController(mock_service)
+    qtbot.addWidget  # noqa: B018  - sanity that qtbot is alive (no widget here)
+    yield ctl
 
 
 def _valid_dto() -> TransactionDTO:

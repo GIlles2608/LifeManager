@@ -32,8 +32,8 @@ from PyQt6.QtWidgets import (
 
 from lifemanager.core.utils.formatting import format_amount
 from lifemanager.finance.application.dto import TransactionReadDTO
+from lifemanager.finance.application.services.finance_service import MonthlyKPIs
 from lifemanager.finance.controllers import FinanceController
-from lifemanager.finance.services.finance_service import MonthlyKPIs
 from lifemanager.finance.views.add_transaction_dialog import AddTransactionDialog
 from lifemanager.finance.views.transaction_table_model import TransactionTableModel
 from lifemanager.shared.widgets.kpi_tile import KpiTile

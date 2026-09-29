@@ -14,4 +14,4 @@ def test_account_category_and_budget_are_frozen_data_objects() -> None:
     assert account.name == "Courant"
     assert category.parent_id is None
     assert budget.category_id == category.id
-    assert account != category
+    assert account.__class__.__name__ != category.__class__.__name__
