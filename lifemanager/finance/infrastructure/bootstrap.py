@@ -2,36 +2,30 @@
 
 from __future__ import annotations
 
-from typing import cast
+from collections.abc import Callable
+from contextlib import AbstractContextManager
 
 from sqlalchemy.orm import Session
 
-from lifemanager.finance.domain.ports import (
-    AccountRepositoryPort,
-    BudgetRepositoryPort,
-    CategoryRepositoryPort,
-    DebtRepositoryPort,
-    SavingsGoalRepositoryPort,
-    TransactionRepositoryPort,
-)
-from lifemanager.finance.infrastructure.persistence.repositories import (
-    AccountRepository,
-    BudgetRepository,
-    CategoryRepository,
-    DebtRepository,
-    SavingsGoalRepository,
-    TransactionRepository,
-)
-from lifemanager.finance.services.finance_service import FinanceService
+from lifemanager.core.config.database import get_session
+from lifemanager.finance.application.ports import AbstractUnitOfWork
+from lifemanager.finance.application.services.finance_service import FinanceService
+from lifemanager.finance.infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
+
+SessionContextFactory = Callable[[], AbstractContextManager[Session]]
 
 
-def build_finance_service(session: Session) -> FinanceService:
-    """Compose concrete persistence adapters for the Finance service."""
-    return FinanceService(
-        tx_repo=cast(TransactionRepositoryPort, TransactionRepository(session)),
-        budget_repo=cast(BudgetRepositoryPort, BudgetRepository(session)),
-        category_repo=cast(CategoryRepositoryPort, CategoryRepository(session)),
-        debt_repo=cast(DebtRepositoryPort, DebtRepository(session)),
-        account_repo=cast(AccountRepositoryPort, AccountRepository(session)),
-        goal_repo=cast(SavingsGoalRepositoryPort, SavingsGoalRepository(session)),
-    )
+def build_finance_service(
+    session_context_factory: SessionContextFactory = get_session,
+) -> FinanceService:
+    """Compose the Finance service over SQLAlchemy persistence adapters.
+
+    The service receives a factory rather than a session: it opens one unit of
+    work — and therefore one session — per operation, instead of sharing a
+    single long-lived session across the whole application run.
+    """
+
+    def build_unit_of_work() -> AbstractUnitOfWork:
+        return SqlAlchemyUnitOfWork(session_context_factory)
+
+    return FinanceService(build_unit_of_work)

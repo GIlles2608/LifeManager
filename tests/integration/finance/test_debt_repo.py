@@ -7,8 +7,8 @@ from decimal import Decimal
 
 import pytest
 
-from lifemanager.finance.models import Debt, DebtStatus
 from lifemanager.finance.infrastructure.persistence.repositories.debt_repo import DebtRepository
+from lifemanager.finance.models import Debt, DebtStatus
 
 
 @pytest.fixture

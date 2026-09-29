@@ -2,7 +2,7 @@
 FinanceController — bridges PyQt6 views and FinanceService.
 
 Responsibilities:
-- Open/close a SQLAlchemy session per user action (Pattern B Unit-of-Work).
+- Delegate application operations to the injected FinanceService.
 - Catch domain errors and surface them as Qt signals so views never see exceptions.
 - Re-emit useful events as Qt signals for direct view binding.
 
@@ -19,7 +19,6 @@ from typing import TypeVar
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from lifemanager.core.config.database import get_session
 from lifemanager.core.exceptions.exceptions import LifeManagerError
 from lifemanager.finance.application.dto import (
     AccountReadDTO,
@@ -29,18 +28,22 @@ from lifemanager.finance.application.dto import (
     TransactionDTO,
     TransactionReadDTO,
 )
-from lifemanager.finance.domain.exceptions import FinanceDomainError
-from lifemanager.finance.services.finance_service import (
+from lifemanager.finance.application.services.finance_service import (
     BudgetCheckResult,
     FinanceService,
     MonthlyKPIs,
 )
+from lifemanager.finance.domain.exceptions import FinanceDomainError
 
 T = TypeVar("T")
 
 
 class FinanceController(QObject):
     """Sync entry points for views; signals for outbound notifications."""
+
+    def __init__(self, service: FinanceService, parent: QObject | None = None) -> None:
+        super().__init__(parent)
+        self._service = service
 
     # ── Outbound signals (views connect to these) ─────────────────────────────
     transaction_created = pyqtSignal(object)  # TransactionReadDTO
@@ -130,8 +133,7 @@ class FinanceController(QObject):
 
     def _run(self, op: Callable[[FinanceService], T]) -> T | None:
         """
-        Run a service operation in a fresh session (Pattern B Unit-of-Work):
-        get_session() commits on success, rolls back on exception.
+        Run an application operation and translate expected domain errors.
 
         Domain errors (LifeManagerError subclasses) are caught and surfaced
         via the `error` signal; the method then returns None so the view can
@@ -141,11 +143,7 @@ class FinanceController(QObject):
         loud rather than silently turn into "operation failed".
         """
         try:
-            with get_session() as session:
-                from lifemanager.finance.infrastructure.bootstrap import build_finance_service
-
-                svc = build_finance_service(session)
-                return op(svc)
+            return op(self._service)
         except (LifeManagerError, FinanceDomainError) as e:
             self.error.emit(str(e))
             return None
