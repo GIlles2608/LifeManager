@@ -5,12 +5,13 @@ from __future__ import annotations
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 from types import TracebackType
-from typing import Self, cast
+from typing import Self
 
 from sqlalchemy.orm import Session
 
+from lifemanager.core.infrastructure.events import InProcessEventPublisher
+from lifemanager.core.ports.event_publisher import AbstractEventPublisher
 from lifemanager.finance.application.ports import AbstractUnitOfWork
-from lifemanager.finance.domain.ports import DebtRepositoryPort
 from lifemanager.finance.infrastructure.persistence.repositories import (
     AccountRepository,
     BudgetRepository,
@@ -31,8 +32,13 @@ class SqlAlchemyUnitOfWork(AbstractUnitOfWork):
     application operation and must not be reused afterwards.
     """
 
-    def __init__(self, session_context_factory: SessionContextFactory) -> None:
+    def __init__(
+        self,
+        session_context_factory: SessionContextFactory,
+        event_publisher: AbstractEventPublisher | None = None,
+    ) -> None:
         self._session_context_factory = session_context_factory
+        self._event_publisher = event_publisher or InProcessEventPublisher()
         self._session_context: AbstractContextManager[Session] | None = None
         self._session: Session | None = None
 
@@ -43,9 +49,10 @@ class SqlAlchemyUnitOfWork(AbstractUnitOfWork):
         self.tx_repo = TransactionRepository(session)
         self.budget_repo = BudgetRepository(session)
         self.category_repo = CategoryRepository(session)
-        self.debt_repo = cast(DebtRepositoryPort, DebtRepository(session))
+        self.debt_repo = DebtRepository(session)
         self.account_repo = AccountRepository(session)
         self.goal_repo = SavingsGoalRepository(session)
+        self._event_repositories = (self.tx_repo, self.budget_repo, self.debt_repo)
         return self
 
     def __exit__(
@@ -68,8 +75,12 @@ class SqlAlchemyUnitOfWork(AbstractUnitOfWork):
 
     def commit(self) -> None:
         if self._session is not None:
+            events = self.collect_new_events()
             self._session.commit()
+            for event in events:
+                self._event_publisher.publish(event)
 
     def rollback(self) -> None:
         if self._session is not None:
+            self.collect_new_events()
             self._session.rollback()

@@ -17,6 +17,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from lifemanager.core.exceptions.exceptions import NotFoundError
+from lifemanager.core.infrastructure.persistence import EventTrackingRepository
 from lifemanager.finance.application.dto import TransactionReadDTO
 from lifemanager.finance.domain.entities import Transaction as TransactionEntity
 from lifemanager.finance.domain.enums import FlowType, SenseType
@@ -24,14 +25,16 @@ from lifemanager.finance.infrastructure.persistence.mappers import TransactionMa
 from lifemanager.finance.models import Account, Category, Transaction
 
 
-class TransactionRepository:
+class TransactionRepository(EventTrackingRepository):
     model = Transaction
 
     def __init__(self, session: Session) -> None:
+        super().__init__()
         self._session = session
 
     def add(self, entity: TransactionEntity) -> TransactionEntity:
         """Persist a domain transaction and return the same domain object."""
+        self._track(entity)
         self._session.add(TransactionMapper.to_model(entity))
         self._session.flush()
         return entity
@@ -41,6 +44,9 @@ class TransactionRepository:
         transaction = self._session.get(Transaction, entity_id)
         if transaction is None:
             raise NotFoundError("Transaction", entity_id)
+        entity = TransactionMapper.to_entity(transaction)
+        entity.mark_deleted()
+        self._track(entity)
         self._session.delete(transaction)
         self._session.flush()
 

@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from decimal import Decimal
 
-from lifemanager.core.events.bus import Events, bus
 from lifemanager.core.exceptions.exceptions import NotFoundError
 from lifemanager.finance.application.dto import (
     AccountReadDTO,
@@ -58,9 +57,9 @@ class FinanceService:
         self._uow_factory = uow_factory
 
     def create_transaction(self, dto: TransactionDTO) -> TransactionReadDTO:
-        """Validate, persist, check budget if applicable, emit events."""
+        """Validate, persist, and check the budget if applicable."""
         self._validate_transaction(dto)
-        tx = TransactionEntity(
+        tx = TransactionEntity.create(
             id=uuid.uuid4(),
             date=dto.date,
             amount=dto.amount,
@@ -74,27 +73,18 @@ class FinanceService:
         )
         with self._uow_factory() as uow:
             uow.tx_repo.add(tx)
-            exceeded_check: BudgetCheckResult | None = None
             if dto.flow_type == FlowType.DEPENSE and dto.category_id is not None:
-                check = self._check_budget(uow, dto.category_id, tx.month)
-                if check.is_exceeded:
-                    exceeded_check = check
+                self._check_budget(uow, dto.category_id, tx.month, record_event=True)
             read_dto = uow.tx_repo.read_by_id(tx.id)
             if read_dto is None:
                 raise NotFoundError("Transaction", tx.id)
 
-        # Events are emitted after the transaction commits: subscribers must
-        # never observe a change that a later rollback would undo.
-        if exceeded_check is not None:
-            bus.emit(Events.BUDGET_EXCEEDED, exceeded_check)
-        bus.emit(Events.TRANSACTION_CREATED, tx)
         return read_dto
 
     def delete_transaction(self, transaction_id: uuid.UUID) -> None:
-        """Delete a transaction by id and emit a deletion event."""
+        """Delete a transaction by id."""
         with self._uow_factory() as uow:
             uow.tx_repo.delete(transaction_id)
-        bus.emit(Events.TRANSACTION_DELETED, transaction_id)
 
     def list_transactions(self, month: str) -> list[TransactionReadDTO]:
         """Return immutable, presentation-ready transactions for the month."""
@@ -143,19 +133,23 @@ class FinanceService:
         )
 
     def update_debt_balance(self, debt_id: uuid.UUID, new_balance: Decimal) -> None:
-        """Update a debt balance immutably and emit an event."""
+        """Update a debt balance immutably."""
         if new_balance < 0:
             raise ValidationError("Debt balance cannot be negative.")
         with self._uow_factory() as uow:
             debt = uow.debt_repo.find_domain_by_id(debt_id)
             if debt is None:
                 raise NotFoundError("Debt", debt_id)
-            updated_debt = replace(debt, current_balance=new_balance)
+            updated_debt = debt.update_balance(new_balance)
             uow.debt_repo.save_domain(updated_debt)
-        bus.emit(Events.DEBT_UPDATED, updated_debt)
 
     def _check_budget(
-        self, uow: AbstractUnitOfWork, category_id: uuid.UUID, month: str
+        self,
+        uow: AbstractUnitOfWork,
+        category_id: uuid.UUID,
+        month: str,
+        *,
+        record_event: bool = False,
     ) -> BudgetCheckResult:
         """Budget comparison running inside an already-open unit of work."""
         budget = uow.budget_repo.get_by_category_and_month(category_id, month)
@@ -163,13 +157,16 @@ class FinanceService:
         ceiling = budget.ceiling if budget is not None else Decimal(0)
         spent = uow.tx_repo.total_spent_by_category(category_id, month)
         remaining = ceiling - spent
-        return BudgetCheckResult(
+        result = BudgetCheckResult(
             category_name=category.name if category is not None else "Inconnu",
             ceiling=ceiling,
             spent=spent,
             remaining=max(remaining, Decimal(0)),
             is_exceeded=ceiling > 0 and spent > ceiling,
         )
+        if record_event and budget is not None and result.is_exceeded:
+            budget.record_exceeded(spent)
+        return result
 
     def _validate_transaction(self, dto: TransactionDTO) -> None:
         if dto.amount <= 0:

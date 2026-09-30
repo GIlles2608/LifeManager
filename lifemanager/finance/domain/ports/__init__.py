@@ -4,6 +4,7 @@ import uuid
 from decimal import Decimal
 from typing import Protocol
 
+from lifemanager.core.ports.event_publisher import EventCollectingRepository
 from lifemanager.finance.application.dto import (
     AccountReadDTO,
     CategoryReadDTO,
@@ -21,7 +22,9 @@ from lifemanager.finance.domain.entities import (
 from lifemanager.finance.domain.enums import FlowType
 
 
-class TransactionRepositoryPort(Protocol):
+class TransactionRepositoryPort(EventCollectingRepository, Protocol):
+    """Persists transactions and collects the events they record."""
+
     def add(self, entity: TransactionEntity) -> TransactionEntity: ...
 
     def delete(self, entity_id: uuid.UUID) -> None: ...
@@ -35,7 +38,9 @@ class TransactionRepositoryPort(Protocol):
     def total_by_flow(self, flow_type: FlowType, month: str) -> Decimal: ...
 
 
-class BudgetRepositoryPort(Protocol):
+class BudgetRepositoryPort(EventCollectingRepository, Protocol):
+    """Reads budgets and collects the events they record."""
+
     def get_by_category_and_month(self, category_id: uuid.UUID, month: str) -> Budget | None: ...
 
 
@@ -45,7 +50,9 @@ class CategoryRepositoryPort(Protocol):
     def find_read_by_id(self, entity_id: uuid.UUID) -> CategoryReadDTO | None: ...
 
 
-class DebtRepositoryPort(Protocol):
+class DebtRepositoryPort(EventCollectingRepository, Protocol):
+    """Persists debts and collects the events they record."""
+
     def find_domain_by_id(self, entity_id: uuid.UUID) -> Debt | None: ...
 
     def save_domain(self, entity: Debt) -> Debt: ...

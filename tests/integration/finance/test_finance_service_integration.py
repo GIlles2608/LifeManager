@@ -22,8 +22,8 @@ from sqlalchemy import Engine, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
-from lifemanager.core.events.bus import Events, bus
 from lifemanager.core.exceptions.exceptions import NotFoundError
+from lifemanager.core.ports.event_publisher import DomainEvent
 from lifemanager.finance.application.dto import TransactionDTO
 from lifemanager.finance.application.services.finance_service import FinanceService
 from lifemanager.finance.domain.enums import (
@@ -33,11 +33,28 @@ from lifemanager.finance.domain.enums import (
     GrandType,
     SenseType,
 )
+from lifemanager.finance.domain.events import BudgetExceeded, TransactionCreated
 from lifemanager.finance.domain.exceptions import ValidationError
 from lifemanager.finance.infrastructure.bootstrap import build_finance_service
 from lifemanager.finance.models import Account, Budget, Category, Debt, Transaction
 
 SessionContextFactory = Callable[[], AbstractContextManager[Session]]
+
+
+class RecordingEventPublisher:
+    """Captures published events so tests can assert on the outbox boundary.
+
+    Satisfies `AbstractEventPublisher` structurally — it is a Protocol, so no
+    inheritance is needed. Kept local rather than imported from the unit-test
+    fakes: those serve `FakeUnitOfWork`, and reaching into them would couple
+    the two suites.
+    """
+
+    def __init__(self) -> None:
+        self.events: list[DomainEvent] = []
+
+    def publish(self, event: DomainEvent) -> None:
+        self.events.append(event)
 
 
 @pytest.fixture
@@ -64,9 +81,19 @@ def session_factory(db_engine: Engine) -> SessionContextFactory:
 
 
 @pytest.fixture
-def service(session_factory: SessionContextFactory, truncate_tables: None) -> FinanceService:
+def publisher() -> RecordingEventPublisher:
+    """A fresh capturing publisher per test."""
+    return RecordingEventPublisher()
+
+
+@pytest.fixture
+def service(
+    session_factory: SessionContextFactory,
+    publisher: RecordingEventPublisher,
+    truncate_tables: None,
+) -> FinanceService:
     """The real service, composed exactly as the application composes it."""
-    return build_finance_service(session_factory)
+    return build_finance_service(session_factory, publisher)
 
 
 @pytest.fixture
@@ -157,6 +184,7 @@ class TestBudgetInteraction:
     def test_exceeding_the_ceiling_emits_budget_exceeded(
         self,
         service: FinanceService,
+        publisher: RecordingEventPublisher,
         db_engine: Engine,
         account_id: uuid.UUID,
         category_id: uuid.UUID,
@@ -172,14 +200,15 @@ class TestBudgetInteraction:
             )
             session.commit()
 
-        captured: list[object] = []
-        bus.on(Events.BUDGET_EXCEEDED, captured.append)
-        try:
-            service.create_transaction(_dto(account_id, category_id=category_id))
-        finally:
-            bus.off(Events.BUDGET_EXCEEDED, captured.append)
+        service.create_transaction(_dto(account_id, category_id=category_id))
 
-        assert len(captured) == 1
+        # Asserting through the injected publisher rather than the global bus
+        # lets the test read the event payload, which string-keyed emission
+        # never exposed.
+        exceeded = [e for e in publisher.events if isinstance(e, BudgetExceeded)]
+        assert len(exceeded) == 1
+        assert exceeded[0].spent == Decimal("50.00")
+        assert exceeded[0].budget.ceiling == Decimal(30)
 
     def test_budget_check_sees_the_transaction_being_created(
         self,
@@ -206,6 +235,48 @@ class TestBudgetInteraction:
         result = service.check_budget(category_id, "2026-03")
         assert result.spent == Decimal("50.00")
         assert result.is_exceeded is True
+
+
+class TestEventPublication:
+    """The transactional outbox boundary (ADR-0007), against real PostgreSQL.
+
+    The pair matters: without the positive case, the rollback assertions would
+    also pass against a publisher that was simply never wired up.
+    """
+
+    def test_a_successful_creation_publishes_transaction_created(
+        self,
+        service: FinanceService,
+        publisher: RecordingEventPublisher,
+        account_id: uuid.UUID,
+    ) -> None:
+        service.create_transaction(_dto(account_id))
+
+        assert [type(event) for event in publisher.events] == [TransactionCreated]
+
+    def test_a_failed_insert_publishes_no_event(
+        self,
+        service: FinanceService,
+        publisher: RecordingEventPublisher,
+    ) -> None:
+        # An unknown account breaks the foreign key at flush time. By then
+        # Transaction.create() has already recorded TransactionCreated and the
+        # repository has tracked the entity, so an event really was pending:
+        # the rollback must drain it without publishing.
+        with pytest.raises(IntegrityError):
+            service.create_transaction(_dto(uuid.uuid4()))
+
+        assert publisher.events == []
+
+    def test_a_failed_debt_update_publishes_no_event(
+        self,
+        service: FinanceService,
+        publisher: RecordingEventPublisher,
+    ) -> None:
+        with pytest.raises(NotFoundError):
+            service.update_debt_balance(uuid.uuid4(), Decimal(500))
+
+        assert publisher.events == []
 
 
 class TestReadOperations:

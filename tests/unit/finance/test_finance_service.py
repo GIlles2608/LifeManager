@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import Iterator
 from dataclasses import replace
 from datetime import date
 from decimal import Decimal
@@ -11,20 +10,25 @@ from typing import Any
 
 import pytest
 
-from lifemanager.core.events.bus import Events, bus
 from lifemanager.core.exceptions.exceptions import NotFoundError
+from lifemanager.core.ports.event_publisher import DomainEvent
 from lifemanager.finance.application.dto import (
     CategoryReadDTO,
     TransactionDTO,
     TransactionReadDTO,
 )
 from lifemanager.finance.application.services.finance_service import (
-    BudgetCheckResult,
     FinanceService,
     MonthlyKPIs,
 )
-from lifemanager.finance.domain.entities import Budget, Debt
+from lifemanager.finance.domain.entities import Budget, Debt, Transaction
 from lifemanager.finance.domain.enums import FlowType, SenseType
+from lifemanager.finance.domain.events import (
+    BudgetExceeded,
+    DebtUpdated,
+    TransactionCreated,
+    TransactionDeleted,
+)
 from lifemanager.finance.domain.exceptions import ValidationError
 from tests.unit.finance.fakes import FakeUnitOfWork
 
@@ -45,31 +49,9 @@ def service(uow: FakeUnitOfWork) -> FinanceService:
 
 
 @pytest.fixture
-def captured_events() -> Iterator[list[tuple[str, tuple[Any, ...], dict[str, Any]]]]:
-    """Capture every event emitted on the global bus during a test."""
-    captured: list[tuple[str, tuple[Any, ...], dict[str, Any]]] = []
-
-    def make_listener(event_name: str) -> Any:
-        def listener(*args: Any, **kwargs: Any) -> None:
-            captured.append((event_name, args, kwargs))
-
-        return listener
-
-    listeners = {}
-    for event in (
-        Events.TRANSACTION_CREATED,
-        Events.TRANSACTION_DELETED,
-        Events.BUDGET_EXCEEDED,
-        Events.DEBT_UPDATED,
-    ):
-        h = make_listener(event)
-        listeners[event] = h
-        bus.on(event, h)
-
-    yield captured
-
-    for event, h in listeners.items():
-        bus.off(event, h)
+def captured_events(uow: FakeUnitOfWork) -> list[DomainEvent]:
+    """Return events published by the fake after a successful commit."""
+    return uow.published_events
 
 
 def _valid_dto(**overrides: Any) -> TransactionDTO:
@@ -177,7 +159,7 @@ class TestCreateTransaction:
         self,
         service: FinanceService,
         uow: FakeUnitOfWork,
-        captured_events: list[tuple[str, tuple[Any, ...], dict[str, Any]]],
+        captured_events: list[DomainEvent],
     ) -> None:
         _answer_read_for_added(uow)
 
@@ -188,9 +170,8 @@ class TestCreateTransaction:
         persisted = next(iter(uow.tx_repo.transactions.values()))
         assert persisted.amount == dto.amount
         assert persisted.label == dto.label
-        events = [e[0] for e in captured_events]
-        assert Events.TRANSACTION_CREATED in events
-        assert Events.BUDGET_EXCEEDED not in events
+        assert any(isinstance(event, TransactionCreated) for event in captured_events)
+        assert not any(isinstance(event, BudgetExceeded) for event in captured_events)
 
     def test_commits_once(self, service: FinanceService, uow: FakeUnitOfWork) -> None:
         _answer_read_for_added(uow)
@@ -214,7 +195,7 @@ class TestCreateTransaction:
     def test_no_event_emitted_when_the_transaction_rolls_back(
         self,
         service: FinanceService,
-        captured_events: list[tuple[str, tuple[Any, ...], dict[str, Any]]],
+        captured_events: list[DomainEvent],
     ) -> None:
         with pytest.raises(NotFoundError):
             service.create_transaction(_valid_dto(category_id=None))
@@ -225,7 +206,7 @@ class TestCreateTransaction:
         self,
         service: FinanceService,
         uow: FakeUnitOfWork,
-        captured_events: list[tuple[str, tuple[Any, ...], dict[str, Any]]],
+        captured_events: list[DomainEvent],
     ) -> None:
         _answer_read_for_added(uow)
         dto = _valid_dto()
@@ -245,12 +226,11 @@ class TestCreateTransaction:
 
         service.create_transaction(dto)
 
-        budget_events = [e for e in captured_events if e[0] == Events.BUDGET_EXCEEDED]
+        budget_events = [event for event in captured_events if isinstance(event, BudgetExceeded)]
         assert len(budget_events) == 1
-        result = budget_events[0][1][0]
-        assert isinstance(result, BudgetCheckResult)
-        assert result.is_exceeded
-        assert result.category_name == "Alimentation"
+        event = budget_events[0]
+        assert event.spent == Decimal(150)
+        assert event.budget.ceiling == Decimal(100)
 
     def test_budget_check_shares_the_creating_transaction(
         self, service: FinanceService, uow: FakeUnitOfWork
@@ -271,13 +251,13 @@ class TestCreateTransaction:
         self,
         service: FinanceService,
         uow: FakeUnitOfWork,
-        captured_events: list[tuple[str, tuple[Any, ...], dict[str, Any]]],
+        captured_events: list[DomainEvent],
     ) -> None:
         _answer_read_for_added(uow)
         service.create_transaction(_valid_dto(category_id=None))
 
         assert uow.budget_repo.lookups == []
-        assert Events.BUDGET_EXCEEDED not in [e[0] for e in captured_events]
+        assert not any(isinstance(event, BudgetExceeded) for event in captured_events)
 
     def test_no_budget_check_for_non_depense(
         self, service: FinanceService, uow: FakeUnitOfWork
@@ -301,16 +281,27 @@ class TestDeleteTransaction:
         self,
         service: FinanceService,
         uow: FakeUnitOfWork,
-        captured_events: list[tuple[str, tuple[Any, ...], dict[str, Any]]],
+        captured_events: list[DomainEvent],
     ) -> None:
         tx_id = uuid.uuid4()
+        uow.given_transaction(
+            Transaction(
+                id=tx_id,
+                date=date(2026, 5, 1),
+                amount=Decimal(50),
+                flow_type=FlowType.DEPENSE.value,
+                sense=SenseType.SORTIE.value,
+                label="Courses",
+                account_id=uuid.uuid4(),
+            )
+        )
         service.delete_transaction(tx_id)
 
         assert uow.tx_repo.deleted == [tx_id]
         assert uow.commits == 1
-        deleted = [e for e in captured_events if e[0] == Events.TRANSACTION_DELETED]
+        deleted = [event for event in captured_events if isinstance(event, TransactionDeleted)]
         assert len(deleted) == 1
-        assert deleted[0][1][0] == tx_id
+        assert deleted[0].transaction_id == tx_id
 
 
 # ── check_budget ──────────────────────────────────────────────────────────────
@@ -425,7 +416,7 @@ class TestUpdateDebtBalance:
         self,
         service: FinanceService,
         uow: FakeUnitOfWork,
-        captured_events: list[tuple[str, tuple[Any, ...], dict[str, Any]]],
+        captured_events: list[DomainEvent],
     ) -> None:
         debt_id = uuid.uuid4()
         uow.given_debt(_debt(debt_id))
@@ -435,15 +426,15 @@ class TestUpdateDebtBalance:
         assert len(uow.debt_repo.saved) == 1
         assert uow.debt_repo.saved[0].current_balance == Decimal(500)
         assert uow.commits == 1
-        assert Events.DEBT_UPDATED in [e[0] for e in captured_events]
+        debt_events = [event for event in captured_events if isinstance(event, DebtUpdated)]
+        assert len(debt_events) == 1
+        assert debt_events[0].debt.current_balance == Decimal(500)
 
     def test_unknown_debt_raises(self, service: FinanceService) -> None:
         with pytest.raises(NotFoundError):
             service.update_debt_balance(uuid.uuid4(), Decimal(500))
 
-    def test_unknown_debt_rolls_back(
-        self, service: FinanceService, uow: FakeUnitOfWork
-    ) -> None:
+    def test_unknown_debt_rolls_back(self, service: FinanceService, uow: FakeUnitOfWork) -> None:
         with pytest.raises(NotFoundError):
             service.update_debt_balance(uuid.uuid4(), Decimal(500))
 

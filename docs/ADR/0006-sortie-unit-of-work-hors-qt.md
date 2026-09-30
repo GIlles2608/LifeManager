@@ -123,6 +123,15 @@ construit plus `get_session()` lui-même.
   chaque module expose son propre point d'assemblage, et
   `bootstrap.py` les compose au niveau racine.
 
+- **Le Unit of Work porte aussi la publication des événements de
+  domaine.** Le mécanisme lui-même — entités porteuses de leurs faits,
+  collecte par les repositories, publication après commit réussi
+  (transactional outbox) — fait l'objet de
+  l'[ADR-0007](0007-bus-evenements-port-sortant.md). Ce qui relève du
+  présent ADR : c'est bien `AbstractUnitOfWork.commit()` qui publie,
+  et `rollback()` qui abandonne les événements collectés. La frontière
+  transactionnelle définie ici est donc aussi la frontière de
+  publication.
 
 
 ## Critères de succès
