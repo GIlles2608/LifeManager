@@ -8,6 +8,8 @@ from contextlib import AbstractContextManager
 from sqlalchemy.orm import Session
 
 from lifemanager.core.config.database import get_session
+from lifemanager.core.infrastructure.events import InProcessEventPublisher
+from lifemanager.core.ports.event_publisher import AbstractEventPublisher
 from lifemanager.finance.application.ports import AbstractUnitOfWork
 from lifemanager.finance.application.services.finance_service import FinanceService
 from lifemanager.finance.infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
@@ -17,6 +19,7 @@ SessionContextFactory = Callable[[], AbstractContextManager[Session]]
 
 def build_finance_service(
     session_context_factory: SessionContextFactory = get_session,
+    event_publisher: AbstractEventPublisher | None = None,
 ) -> FinanceService:
     """Compose the Finance service over SQLAlchemy persistence adapters.
 
@@ -25,7 +28,9 @@ def build_finance_service(
     single long-lived session across the whole application run.
     """
 
+    publisher = event_publisher or InProcessEventPublisher()
+
     def build_unit_of_work() -> AbstractUnitOfWork:
-        return SqlAlchemyUnitOfWork(session_context_factory)
+        return SqlAlchemyUnitOfWork(session_context_factory, publisher)
 
     return FinanceService(build_unit_of_work)

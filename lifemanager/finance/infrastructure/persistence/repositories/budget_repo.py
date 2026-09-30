@@ -7,15 +7,17 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from lifemanager.core.infrastructure.persistence import EventTrackingRepository
 from lifemanager.finance.domain.entities import Budget as BudgetEntity
 from lifemanager.finance.infrastructure.persistence.mappers import BudgetMapper
 from lifemanager.finance.models import Budget
 
 
-class BudgetRepository:
+class BudgetRepository(EventTrackingRepository):
     model = Budget
 
     def __init__(self, session: Session) -> None:
+        super().__init__()
         self._session = session
 
     def get_by_category_and_month(self, category_id: uuid.UUID, month: str) -> BudgetEntity | None:
@@ -29,7 +31,11 @@ class BudgetRepository:
             Budget.month == month,
         )
         model = self._session.scalars(stmt).first()
-        return BudgetMapper.to_entity(model) if model is not None else None
+        if model is None:
+            return None
+        entity = BudgetMapper.to_entity(model)
+        self._track(entity)
+        return entity
 
     def list_by_month(self, month: str) -> list[Budget]:
         stmt = select(Budget).where(Budget.month == month)

@@ -13,6 +13,9 @@ from dataclasses import replace
 from decimal import Decimal
 from typing import Self
 
+from lifemanager.core.exceptions.exceptions import NotFoundError
+from lifemanager.core.infrastructure.persistence import EventTrackingRepository
+from lifemanager.core.ports.event_publisher import DomainEvent
 from lifemanager.finance.application.dto import (
     AccountReadDTO,
     CategoryReadDTO,
@@ -26,10 +29,21 @@ from lifemanager.finance.domain.entities import Transaction as TransactionEntity
 from lifemanager.finance.domain.enums import FlowType
 
 
-class FakeTransactionRepository:
+class FakeEventPublisher:
+    """Publisher recording typed events after a successful fake commit."""
+
+    def __init__(self) -> None:
+        self.events: list[DomainEvent] = []
+
+    def publish(self, event: DomainEvent) -> None:
+        self.events.append(event)
+
+
+class FakeTransactionRepository(EventTrackingRepository):
     """Transactions held in a dict, keyed by id."""
 
     def __init__(self) -> None:
+        super().__init__()
         self.transactions: dict[uuid.UUID, TransactionEntity] = {}
         self.read_rows: dict[uuid.UUID, TransactionReadDTO] = {}
         self.rows_by_month: dict[str, list[TransactionReadDTO]] = {}
@@ -38,10 +52,16 @@ class FakeTransactionRepository:
         self.deleted: list[uuid.UUID] = []
 
     def add(self, entity: TransactionEntity) -> TransactionEntity:
+        self._track(entity)
         self.transactions[entity.id] = entity
         return entity
 
     def delete(self, entity_id: uuid.UUID) -> None:
+        entity = self.transactions.get(entity_id)
+        if entity is None:
+            raise NotFoundError("Transaction", entity_id)
+        entity.mark_deleted()
+        self._track(entity)
         self.deleted.append(entity_id)
         self.transactions.pop(entity_id, None)
 
@@ -58,14 +78,18 @@ class FakeTransactionRepository:
         return self.totals_by_flow.get((flow_type, month), Decimal(0))
 
 
-class FakeBudgetRepository:
+class FakeBudgetRepository(EventTrackingRepository):
     def __init__(self) -> None:
+        super().__init__()
         self.budgets: dict[tuple[uuid.UUID, str], Budget] = {}
         self.lookups: list[tuple[uuid.UUID, str]] = []
 
     def get_by_category_and_month(self, category_id: uuid.UUID, month: str) -> Budget | None:
         self.lookups.append((category_id, month))
-        return self.budgets.get((category_id, month))
+        budget = self.budgets.get((category_id, month))
+        if budget is not None:
+            self._track(budget)
+        return budget
 
 
 class FakeCategoryRepository:
@@ -80,16 +104,21 @@ class FakeCategoryRepository:
         return self.by_id.get(entity_id)
 
 
-class FakeDebtRepository:
+class FakeDebtRepository(EventTrackingRepository):
     def __init__(self) -> None:
+        super().__init__()
         self.debts: dict[uuid.UUID, Debt] = {}
         self.active: list[DebtReadDTO] = []
         self.saved: list[Debt] = []
 
     def find_domain_by_id(self, entity_id: uuid.UUID) -> Debt | None:
-        return self.debts.get(entity_id)
+        debt = self.debts.get(entity_id)
+        if debt is not None:
+            self._track(debt)
+        return debt
 
     def save_domain(self, entity: Debt) -> Debt:
+        self._track(entity)
         self.debts[entity.id] = entity
         self.saved.append(entity)
         return entity
@@ -118,12 +147,14 @@ class FakeUnitOfWork(AbstractUnitOfWork):
     """In-memory unit of work recording its transaction boundary."""
 
     def __init__(self) -> None:
-        self.tx_repo = FakeTransactionRepository()
-        self.budget_repo = FakeBudgetRepository()
-        self.category_repo = FakeCategoryRepository()
-        self.debt_repo = FakeDebtRepository()
-        self.account_repo = FakeAccountRepository()
-        self.goal_repo = FakeSavingsGoalRepository()
+        self.tx_repo: FakeTransactionRepository = FakeTransactionRepository()
+        self.budget_repo: FakeBudgetRepository = FakeBudgetRepository()
+        self.category_repo: FakeCategoryRepository = FakeCategoryRepository()
+        self.debt_repo: FakeDebtRepository = FakeDebtRepository()
+        self.account_repo: FakeAccountRepository = FakeAccountRepository()
+        self.goal_repo: FakeSavingsGoalRepository = FakeSavingsGoalRepository()
+        self._event_publisher: FakeEventPublisher = FakeEventPublisher()
+        self._event_repositories = (self.tx_repo, self.budget_repo, self.debt_repo)
         self.commits = 0
         self.rollbacks = 0
         self.entered = 0
@@ -133,9 +164,13 @@ class FakeUnitOfWork(AbstractUnitOfWork):
         return self
 
     def commit(self) -> None:
+        events = self.collect_new_events()
         self.commits += 1
+        for event in events:
+            self._event_publisher.publish(event)
 
     def rollback(self) -> None:
+        self.collect_new_events()
         self.rollbacks += 1
 
     # ── Test helpers ──────────────────────────────────────────────────────────
@@ -143,6 +178,10 @@ class FakeUnitOfWork(AbstractUnitOfWork):
     def given_transaction_read_row(self, row: TransactionReadDTO) -> None:
         """Make `read_by_id` return `row` for whichever transaction is added."""
         self.tx_repo.read_rows[row.id] = row
+
+    def given_transaction(self, entity: TransactionEntity) -> None:
+        """Seed a transaction for delete and repository behavior tests."""
+        self.tx_repo.transactions[entity.id] = entity
 
     def given_budget(self, budget: Budget, month: str) -> None:
         self.budget_repo.budgets[(budget.category_id, month)] = budget
@@ -155,3 +194,8 @@ class FakeUnitOfWork(AbstractUnitOfWork):
 
     def with_balance(self, debt: Debt, balance: Decimal) -> Debt:
         return replace(debt, current_balance=balance)
+
+    @property
+    def published_events(self) -> list[DomainEvent]:
+        """Return events published by the fake publisher."""
+        return self._event_publisher.events

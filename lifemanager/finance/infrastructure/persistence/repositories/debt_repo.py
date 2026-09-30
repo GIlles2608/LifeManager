@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from lifemanager.core.exceptions.exceptions import NotFoundError
+from lifemanager.core.infrastructure.persistence import EventTrackingRepository
 from lifemanager.finance.application.dto import DebtReadDTO
 from lifemanager.finance.domain.entities import Debt as DebtEntity
 from lifemanager.finance.domain.enums import DebtStatus
@@ -15,10 +16,11 @@ from lifemanager.finance.infrastructure.persistence.mappers import DebtMapper
 from lifemanager.finance.models import Debt
 
 
-class DebtRepository:
+class DebtRepository(EventTrackingRepository):
     model = Debt
 
     def __init__(self, session: Session) -> None:
+        super().__init__()
         self._session = session
 
     def find_by_id(self, entity_id: uuid.UUID) -> Debt | None:
@@ -28,10 +30,15 @@ class DebtRepository:
     def find_domain_by_id(self, entity_id: uuid.UUID) -> DebtEntity | None:
         """Return a debt as a pure domain entity."""
         model = self.find_by_id(entity_id)
-        return DebtMapper.to_entity(model) if model is not None else None
+        if model is None:
+            return None
+        entity = DebtMapper.to_entity(model)
+        self._track(entity)
+        return entity
 
     def save_domain(self, entity: DebtEntity) -> DebtEntity:
         """Persist a domain debt and return the same immutable entity."""
+        self._track(entity)
         model = self._session.get(Debt, entity.id)
         if model is None:
             raise NotFoundError("Debt", entity.id)

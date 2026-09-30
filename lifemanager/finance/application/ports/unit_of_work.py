@@ -7,6 +7,11 @@ from collections.abc import Callable
 from types import TracebackType
 from typing import Self, TypeAlias
 
+from lifemanager.core.ports.event_publisher import (
+    AbstractEventPublisher,
+    DomainEvent,
+    EventCollectingRepository,
+)
 from lifemanager.finance.domain.ports import (
     AccountRepositoryPort,
     BudgetRepositoryPort,
@@ -26,6 +31,8 @@ class AbstractUnitOfWork(ABC):
     debt_repo: DebtRepositoryPort
     account_repo: AccountRepositoryPort
     goal_repo: SavingsGoalRepositoryPort
+    _event_repositories: tuple[EventCollectingRepository, ...] = ()
+    _event_publisher: AbstractEventPublisher
 
     def __enter__(self) -> Self:
         return self
@@ -40,6 +47,13 @@ class AbstractUnitOfWork(ABC):
             self.commit()
         else:
             self.rollback()
+
+    def collect_new_events(self) -> list[DomainEvent]:
+        """Drain events from repositories tracked by this unit of work."""
+        events: list[DomainEvent] = []
+        for repository in self._event_repositories:
+            events.extend(repository.collect_new_events())
+        return events
 
     @abstractmethod
     def commit(self) -> None:
